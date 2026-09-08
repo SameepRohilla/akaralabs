@@ -1,0 +1,141 @@
+<div class="start-grid">
+
+    <!-- LEFT RAIL -->
+    <aside class="start-aside" data-screen-label="Start — rail">
+      <p class="kicker">Start a project</p>
+      <h1>Tell us what you're making.<span class="deva-accent" lang="hi">बताइए, क्या बनाना है?</span></h1>
+      <p class="sub">A sketch, a CAD file, or just a description — whatever you have. We'll read it properly and come back with a real answer.</p>
+      <div class="promise">
+        <div class="promise-item"><span class="pn">01</span><p><b>A quote within 12 hours</b>Cost, material and lead time — with the trade-offs behind each.</p></div>
+        <div class="promise-item"><span class="pn">02</span><p><b>Read by an engineer</b>Not a portal. Someone who understands tolerances, loads and heat.</p></div>
+        <div class="promise-item"><span class="pn">03</span><p><b>Your IP stays yours</b>NDAs welcome. Files are never reused or shared.</p></div>
+      </div>
+    </aside>
+
+    <!-- RIGHT FORM -->
+    <section class="start-form-col" data-screen-label="Start — form">
+
+      <!-- progress -->
+      <div class="progress" id="progress">
+        <div class="pstep active" data-step="0"><span class="pdot">1</span><span class="plabel">Service</span></div>
+        <span class="pline"></span>
+        <div class="pstep" data-step="1"><span class="pdot">2</span><span class="plabel">Project</span></div>
+        <span class="pline"></span>
+        <div class="pstep" data-step="2"><span class="pdot">3</span><span class="plabel">Details</span></div>
+        <span class="pline"></span>
+        <div class="pstep" data-step="3"><span class="pdot">4</span><span class="plabel">You</span></div>
+        <span class="pline"></span>
+        <div class="pstep" data-step="4"><span class="pdot">5</span><span class="plabel">Review</span></div>
+      </div>
+
+      <form id="intake" novalidate>
+
+        <!-- STEP 1 — service -->
+        <div class="step active" data-step="0">
+          <h2>How can we help?</h2>
+          <p class="step-sub">Pick whatever's closest — we'll shape the exact path together from here.</p>
+          <div class="choice-grid" data-single="service">
+            <label class="choice"><input type="radio" name="service" value="Custom Design & Prototyping" checked /><span class="ct">Design &amp; Prototyping <span class="tick"></span></span><span class="cd">CAD from scratch, plus printed prototype iterations.</span></label>
+            <label class="choice"><input type="radio" name="service" value="Design Finder & Builder" /><span class="ct">Design Finder &amp; Builder <span class="tick"></span></span><span class="cd">You have an idea, not a design — we source &amp; build it.</span></label>
+            <label class="choice"><input type="radio" name="service" value="Small-Batch Production" /><span class="ct">Small-Batch Production <span class="tick"></span></span><span class="cd">Functional runs in engineering-grade materials.</span></label>
+            <label class="choice"><input type="radio" name="service" value="Custom Gifting & Personalization" /><span class="ct">Custom Gifting <span class="tick"></span></span><span class="cd">Awards, favours, keepsakes — made personal.</span></label>
+          </div>
+        </div>
+
+        <!-- STEP 2 — project / field -->
+        <div class="step" data-step="1">
+          <h2>Tell us a little about it.</h2>
+          <p class="step-sub">Knowing the field lets us anticipate the right materials, tolerances and finish for you.</p>
+          <span class="field-label">Field <span class="opt">— pick any that apply</span></span>
+          <div class="chip-row" data-multi="fields">
+            <label class="chip"><input type="checkbox" name="fields" value="Drones" /><span>Drones</span></label>
+            <label class="chip"><input type="checkbox" name="fields" value="Robotics" /><span>Robotics</span></label>
+            <label class="chip"><input type="checkbox" name="fields" value="IoT" /><span>IoT</span></label>
+            <label class="chip"><input type="checkbox" name="fields" value="Industrial Automation" /><span>Industrial</span></label>
+            <label class="chip"><input type="checkbox" name="fields" value="Defence" /><span>Defence</span></label>
+            <label class="chip"><input type="checkbox" name="fields" value="Education" /><span>Education</span></label>
+            <label class="chip"><input type="checkbox" name="fields" value="Architecture" /><span>Architecture</span></label>
+            <label class="chip"><input type="checkbox" name="fields" value="Gifting & Events" /><span>Gifting &amp; Events</span></label>
+            <label class="chip"><input type="checkbox" name="fields" value="Other" /><span>Something else</span></label>
+          </div>
+          <span class="field-label">Project name <span class="opt">— optional</span></span>
+          <input class="inp" type="text" name="project" placeholder="e.g. Sub-250g quad frame, v2" />
+        </div>
+
+        <!-- STEP 3 — details + file -->
+        <div class="step" data-step="2">
+          <h2>Walk us through it.</h2>
+          <p class="step-sub">The more you share, the sharper our quote — but rough notes are perfectly welcome.</p>
+          <span class="field-label">What are you hoping to make?</span>
+          <textarea class="ta" name="brief" placeholder="What the part does, where it lives, any loads / heat / fit it has to handle, and how many you need…"></textarea>
+
+          <span class="field-label">Upload files <span class="opt">— STL, STEP, images, sketches</span></span>
+          <div class="dropzone" id="dropzone">
+            <input type="file" id="fileinput" multiple hidden accept=".stl,.step,.stp,.obj,.3mf,.pdf,.png,.jpg,.jpeg,.zip" />
+            <div class="dz-ico" aria-hidden="true"><svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M17 23V8"/><path d="M11 14l6-6 6 6"/><path d="M6 23v3h22v-3"/></svg></div>
+            <div class="dz-main">Drop files here, or <span style="color:var(--terra-deep);text-decoration:underline">browse</span></div>
+            <div class="dz-sub">STL · STEP · OBJ · 3MF · PDF · IMG — up to 50MB each</div>
+          </div>
+          <div class="dz-files" id="dzfiles"></div>
+
+          <div class="two-col" style="margin-top:6px">
+            <div>
+              <span class="field-label">Quantity</span>
+              <input class="inp" type="text" name="qty" placeholder="e.g. 1 prototype, or 50 units" />
+            </div>
+            <div>
+              <span class="field-label">Timeline</span>
+              <input class="inp" type="text" name="timeline" placeholder="e.g. ASAP, or by 20 June" />
+            </div>
+          </div>
+        </div>
+
+        <!-- STEP 4 — contact -->
+        <div class="step" data-step="3">
+          <h2>How should we reach you?</h2>
+          <p class="step-sub">We'll send your quote however you prefer — email or WhatsApp, your call.</p>
+          <div class="two-col">
+            <div>
+              <span class="field-label">Name</span>
+              <input class="inp" type="text" name="name" placeholder="Your name" required />
+            </div>
+            <div>
+              <span class="field-label">Company <span class="opt">— optional</span></span>
+              <input class="inp" type="text" name="company" placeholder="Studio, startup, school…" />
+            </div>
+          </div>
+          <span class="field-label">Email</span>
+          <input class="inp" type="email" name="email" placeholder="you@company.com" required />
+          <span class="field-label">WhatsApp / Phone <span class="opt">— optional, for faster back-and-forth</span></span>
+          <input class="inp" type="tel" name="phone" placeholder="+91 ·····" />
+        </div>
+
+        <!-- STEP 5 — review -->
+        <div class="step" data-step="4">
+          <h2>Does this look right?</h2>
+          <p class="step-sub">Have a quick look before it lands on our bench — you can step back and edit anything.</p>
+          <div class="review-list" id="review"></div>
+          <p class="mono" style="margin-top:18px;text-transform:none;letter-spacing:0">By sending this you agree we may contact you about your project. Nothing else, ever.</p>
+        </div>
+
+        <!-- NAV -->
+        <div class="form-nav">
+          <button type="button" class="back" id="backBtn" hidden>← Back</button>
+          <span class="step-count" id="stepCount">Step 01 / 05</span>
+          <button type="button" class="btn btn-primary" id="nextBtn">Continue <span class="arr">→</span></button>
+        </div>
+        <p class="form-error" id="startError" style="display:none;color:var(--terra-deep);font-size:0.92rem;margin:14px 0 0;text-align:right"></p>
+      </form>
+
+      <!-- SUCCESS -->
+      <div class="success" id="success">
+        <span class="seal">अ</span>
+        <h2>It's on our bench.</h2>
+        <p>Thanks — we've got it. Expect a quote and a plan from a real engineer within 12 hours.</p>
+        <p class="ref" id="refno">REF · AKR-000000</p>
+        <div id="post-submit-actions" class="hero-cta" style="margin-top:24px;justify-content:center"></div>
+        <a class="btn btn-ghost" href="/work/" style="margin-top:14px">Meanwhile, see our work →</a>
+      </div>
+
+    </section>
+  </div>

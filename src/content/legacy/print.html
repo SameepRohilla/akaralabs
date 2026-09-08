@@ -1,0 +1,241 @@
+<div class="print-grid">
+
+    <!-- LEFT RAIL -->
+    <aside class="print-aside" data-screen-label="Print — rail">
+      <p class="kicker">3D printing service</p>
+      <h1>Send the model. We'll print it right.<span class="deva-accent" lang="hi">मॉडल भेजिए, बाकी हम पर छोड़िए</span></h1>
+      <p class="sub">Already have a file? Tell us the material, quality and finish you need — or leave it to us and we'll recommend the settings for your part.</p>
+      <div class="rail-block">
+        <div class="rail-promise"><span class="pn">01</span><p><b>A print quote within 12 hours</b>Material, layer height, finish and cost — itemised.</p></div>
+        <div class="rail-promise"><span class="pn">02</span><p><b>Calibrated machines, FDM &amp; SLA</b>Down to 0.05mm on resin, engineering polymers on filament.</p></div>
+        <div class="rail-promise"><span class="pn">03</span><p><b>Not sure of the settings?</b>Leave any field on "recommend" — choosing well is our job.</p></div>
+        <a class="rail-link" href="/materials/">See the materials guide →</a>
+      </div>
+    </aside>
+
+    <!-- RIGHT FORM -->
+    <section class="print-form-col" data-screen-label="Print — form">
+      <form id="printForm" novalidate>
+        <p class="form-intro">Tap a step to open it. Fill in what you know — and <b>leave anything you're unsure about to us.</b></p>
+
+        <!-- 1 · YOUR MODEL -->
+        <div class="fsec" data-open>
+          <button type="button" class="fsec-head" aria-expanded="true">
+            <span class="sn">01</span>
+            <span class="fsec-titles">
+              <span class="fsec-title">Your design</span>
+              <span class="sd">Send a 3D file, or simply a photo of what you want made. No file at all? Just describe it.</span>
+              <span class="fsec-done">Added</span>
+            </span>
+            <span class="fsec-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="fsec-body">
+            <span class="field-label">Upload your file <span class="opt">— a 3D file, or just a photo</span></span>
+            <div class="dropzone" id="dropzone">
+              <input type="file" id="fileinput" multiple hidden accept=".stl,.step,.stp,.obj,.3mf,.zip,.pdf,.png,.jpg,.jpeg" />
+              <div class="dz-ico" aria-hidden="true"><svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M17 23V8"/><path d="M11 14l6-6 6 6"/><path d="M6 23v3h22v-3"/></svg></div>
+              <div class="dz-main">Drop a file here, or <span style="color:var(--terra-deep);text-decoration:underline">tap to browse</span></div>
+              <div class="dz-sub">No 3D file? Just add a photo or picture of the thing you want — even a hand sketch works</div>
+            </div>
+            <div class="dz-files" id="dzfiles"></div>
+
+            <span class="field-label">Or describe what you want <span class="opt">— in your own words</span></span>
+            <textarea class="ta" name="brief" placeholder="What is it, what will it be used for, and how big? Add a photo or link if you have one — we can design it for you."></textarea>
+            <p class="hint">Starting from just an idea, with no file at all? That's a <a href="/start/" style="color:var(--terra-deep);border-bottom:1px solid var(--line-2)">full project</a> — begin there instead.</p>
+          </div>
+        </div>
+
+        <!-- 2 · MATERIAL -->
+        <div class="fsec">
+          <button type="button" class="fsec-head" aria-expanded="false">
+            <span class="sn">02</span>
+            <span class="fsec-titles">
+              <span class="fsec-title">Material</span>
+              <span class="sd">What should it be made of? Not sure? Leave it on “Recommend” and we'll choose.</span>
+              <span class="fsec-done">Chosen</span>
+            </span>
+            <span class="fsec-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="fsec-body">
+            <p class="hint" style="margin:0 0 14px">Each plastic behaves differently — some are strong, some bend, some handle heat or sunlight. Tell us how the part will be used and we'll pick the right one.</p>
+            <div class="choice-grid c3" data-single="material">
+              <label class="choice"><input type="radio" name="material" value="Recommend for me" checked /><span class="ct">Recommend <span class="tick"></span></span><span class="cd">Tell us the use, we'll choose.</span></label>
+              <label class="choice"><input type="radio" name="material" value="PLA" /><span class="ct">PLA <span class="tick"></span></span><span class="cd">Sharp detail, low cost. For indoor / display parts.</span></label>
+              <label class="choice"><input type="radio" name="material" value="PETG" /><span class="ct">PETG <span class="tick"></span></span><span class="cd">Tough all-rounder for everyday use.</span></label>
+              <label class="choice"><input type="radio" name="material" value="ASA" /><span class="ct">ASA <span class="tick"></span></span><span class="cd">Handles sun &amp; rain. For outdoor parts.</span></label>
+              <label class="choice"><input type="radio" name="material" value="ABS" /><span class="ct">ABS <span class="tick"></span></span><span class="cd">Tough &amp; heat-tolerant; can be polished.</span></label>
+              <label class="choice"><input type="radio" name="material" value="PA-CF" /><span class="ct">PA-CF <span class="tick"></span></span><span class="cd">Light but very strong. For load-bearing parts.</span></label>
+              <label class="choice"><input type="radio" name="material" value="Resin (SLA)" /><span class="ct">Resin <span class="tick"></span></span><span class="cd">Finest detail, smoothest surface.</span></label>
+              <label class="choice"><input type="radio" name="material" value="TPU" /><span class="ct">TPU <span class="tick"></span></span><span class="cd">Soft &amp; rubbery — bends and springs back.</span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3 · PRINT SETTINGS -->
+        <div class="fsec">
+          <button type="button" class="fsec-head" aria-expanded="false">
+            <span class="sn">03</span>
+            <span class="fsec-titles">
+              <span class="fsec-title">Quality &amp; strength</span>
+              <span class="sd">How smooth it looks and how strong it is. Happy to set both for you.</span>
+              <span class="fsec-done">Chosen</span>
+            </span>
+            <span class="fsec-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="fsec-body">
+            <span class="field-label">How smooth should it look?</span>
+            <p class="hint" style="margin:0 0 12px">Finer settings look smoother but take longer and cost a little more.</p>
+            <div class="choice-grid c3" data-single="quality">
+              <label class="choice"><input type="radio" name="quality" value="Recommend" checked /><span class="ct">Recommend <span class="tick"></span></span><span class="cd">We'll choose for you</span></label>
+              <label class="choice"><input type="radio" name="quality" value="Draft 0.3mm" /><span class="ct">Basic <span class="tick"></span></span><span class="cd">Quickest &amp; cheapest</span></label>
+              <label class="choice"><input type="radio" name="quality" value="Standard 0.2mm" /><span class="ct">Standard <span class="tick"></span></span><span class="cd">Good for most parts</span></label>
+              <label class="choice"><input type="radio" name="quality" value="Fine 0.1mm" /><span class="ct">Fine <span class="tick"></span></span><span class="cd">Smooth &amp; detailed</span></label>
+              <label class="choice"><input type="radio" name="quality" value="Ultra-fine 0.05mm (resin)" /><span class="ct">Ultra-fine <span class="tick"></span></span><span class="cd">Smoothest (resin)</span></label>
+            </div>
+
+            <span class="field-label">How strong should it be?</span>
+            <p class="hint" style="margin:0 0 12px">More strength uses more material, so it costs a bit more. Stronger parts also weigh more.</p>
+            <div class="choice-grid c3" data-single="infill">
+              <label class="choice"><input type="radio" name="infill" value="Recommend" checked /><span class="ct">Recommend <span class="tick"></span></span><span class="cd">We'll choose for you</span></label>
+              <label class="choice"><input type="radio" name="infill" value="Light (visual)" /><span class="ct">Light <span class="tick"></span></span><span class="cd">Just for looking / display</span></label>
+              <label class="choice"><input type="radio" name="infill" value="Standard" /><span class="ct">Standard <span class="tick"></span></span><span class="cd">Everyday handling</span></label>
+              <label class="choice"><input type="radio" name="infill" value="Strong" /><span class="ct">Strong <span class="tick"></span></span><span class="cd">Takes real force</span></label>
+              <label class="choice"><input type="radio" name="infill" value="Solid" /><span class="ct">Very strong <span class="tick"></span></span><span class="cd">Maximum strength</span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4 · SIZE, COLOUR & FINISH -->
+        <div class="fsec">
+          <button type="button" class="fsec-head" aria-expanded="false">
+            <span class="sn">04</span>
+            <span class="fsec-titles">
+              <span class="fsec-title">Size, colour &amp; look</span>
+              <span class="sd">How big it should be, what colour, and how the surface should look.</span>
+              <span class="fsec-done">Set</span>
+            </span>
+            <span class="fsec-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="fsec-body">
+            <span class="field-label">What size do you want it?</span>
+            <p class="hint" style="margin:0 0 12px">Most files already include the correct size. Only change this if you need it bigger or smaller.</p>
+            <div class="two-col">
+              <div>
+                <select class="inp" name="scale" aria-label="Size option">
+                  <option>Print at the file's original size</option>
+                  <option>Make it bigger or smaller (I'll say below)</option>
+                  <option>Not sure — please advise me</option>
+                </select>
+              </div>
+              <div>
+                <input class="inp" type="text" name="size" placeholder="e.g. 10 cm tall, or about palm-sized" aria-label="Target size" />
+              </div>
+            </div>
+
+            <span class="field-label">What colour? <span class="opt">— optional</span></span>
+            <input class="inp" type="text" name="colour" placeholder="e.g. black, white, red… or type ‘you choose’" />
+            <p class="hint">We stock common colours. For an exact shade, a Pantone or RAL code helps — but a plain colour name is perfectly fine.</p>
+
+            <span class="field-label">How should the surface look? <span class="opt">— pick any, or none</span></span>
+            <p class="hint" style="margin:0 0 12px">This is the “finishing” — what we do to the part after printing. Skip it and we'll send it clean and as-printed.</p>
+            <div class="fin-grid2" data-multi="finish">
+              <label class="fchoice"><input type="checkbox" name="finish" value="As-printed" /><span class="ft">As it prints <span class="ftick"></span></span><span class="fd">Straight off the machine — faint layer lines, lowest cost</span></label>
+              <label class="fchoice"><input type="checkbox" name="finish" value="Sanded & smoothed" /><span class="ft">Smoothed <span class="ftick"></span></span><span class="fd">Sanded by hand so the lines don't show</span></label>
+              <label class="fchoice"><input type="checkbox" name="finish" value="Primed & painted" /><span class="ft">Painted <span class="ftick"></span></span><span class="fd">Colour-matched and ready to present</span></label>
+              <label class="fchoice"><input type="checkbox" name="finish" value="Multi-colour" /><span class="ft">Multi-colour <span class="ftick"></span></span><span class="fd">More than one colour, printed into the part</span></label>
+              <label class="fchoice"><input type="checkbox" name="finish" value="Threaded inserts / hardware" /><span class="ft">Fittings added <span class="ftick"></span></span><span class="fd">Metal threads, magnets or screws fitted</span></label>
+              <label class="fchoice"><input type="checkbox" name="finish" value="Engraving / lithophane" /><span class="ft">Name / photo <span class="ftick"></span></span><span class="fd">Engraved text or photos — for gifts &amp; awards</span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5 · QUANTITY & TIMING -->
+        <div class="fsec">
+          <button type="button" class="fsec-head" aria-expanded="false">
+            <span class="sn">05</span>
+            <span class="fsec-titles">
+              <span class="fsec-title">How many &amp; by when</span>
+              <span class="sd">The number of pieces you need, and the date you need them by.</span>
+              <span class="fsec-done">Set</span>
+            </span>
+            <span class="fsec-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="fsec-body">
+            <div class="two-col">
+              <div>
+                <span class="field-label">How many pieces?</span>
+                <div class="qty-stepper">
+                  <button type="button" id="qtyMinus" aria-label="Decrease quantity">−</button>
+                  <input type="number" name="qty" id="qtyInput" value="1" min="1" step="1" inputmode="numeric" aria-label="Quantity" />
+                  <button type="button" id="qtyPlus" aria-label="Increase quantity">+</button>
+                </div>
+                <span class="qty-unit" id="qtyUnit">piece</span>
+                <p class="hint" style="margin-top:12px">Use the − and + buttons, or type a number.</p>
+              </div>
+              <div>
+                <span class="field-label">When do you need it?</span>
+                <div class="date-row">
+                  <input class="inp" type="date" name="timeline" id="needDate" aria-label="Needed by date" />
+                </div>
+                <label class="chip" style="margin-top:10px"><input type="checkbox" name="flexible" value="No fixed date — flexible" id="flexChk" /><span>No fixed date — I'm flexible</span></label>
+                <p class="hint" style="margin-top:12px">Pick a date from the calendar, or tick “flexible” if there's no rush.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6 · CONTACT -->
+        <div class="fsec">
+          <button type="button" class="fsec-head" aria-expanded="false">
+            <span class="sn">06</span>
+            <span class="fsec-titles">
+              <span class="fsec-title">Your details</span>
+              <span class="sd">Where we'll send your price. Just a name and email is enough to start.</span>
+              <span class="fsec-done">Added</span>
+            </span>
+            <span class="fsec-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="fsec-body">
+            <div class="two-col">
+              <div>
+                <span class="field-label">Your name</span>
+                <input class="inp" type="text" name="name" placeholder="Your name" required />
+              </div>
+              <div>
+                <span class="field-label">Company / organisation <span class="opt">— optional</span></span>
+                <input class="inp" type="text" name="company" placeholder="Business, startup, school…" />
+              </div>
+            </div>
+            <div class="two-col" style="margin-top:14px">
+              <div>
+                <span class="field-label">Email</span>
+                <input class="inp" type="email" name="email" placeholder="you@email.com" required />
+              </div>
+              <div>
+                <span class="field-label">WhatsApp number <span class="opt">— optional, for a faster reply</span></span>
+                <input class="inp" type="tel" name="phone" placeholder="+91 ·····" />
+              </div>
+            </div>
+
+            <div class="submit-row">
+              <button type="button" class="btn btn-primary" id="submitBtn">Send my request <span class="arr">→</span></button>
+              <span class="submit-note">It's free, with no obligation. Your file stays private.</span>
+            </div>
+            <p class="form-error" id="formError" style="display:none;color:var(--terra-deep);font-size:0.92rem;margin:14px 0 0"></p>
+          </div>
+        </div>
+
+      </form>
+
+      <!-- SUCCESS -->
+      <div class="psuccess" id="psuccess">
+        <span class="seal">अ</span>
+        <h2>On the build plate, queued.</h2>
+        <p>Got your model and settings. A quote — material, finish, cost and lead time — is on its way within 12 hours.</p>
+        <p class="ref" id="refno">REF · AKR-P-000000</p>
+        <div id="post-submit-actions" class="hero-cta" style="margin-top:24px;justify-content:center"></div>
+        <a class="btn btn-ghost" href="/materials/" style="margin-top:14px">Read the materials guide →</a>
+      </div>
+
+    </section>
+  </div>

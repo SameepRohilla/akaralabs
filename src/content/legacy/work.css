@@ -1,0 +1,51 @@
+
+.page-head { padding-top: clamp(48px, 7vw, 92px); padding-bottom: clamp(36px, 5vw, 64px); }
+.page-head h1 { font-size: clamp(2.8rem, 6vw, 4.8rem); letter-spacing: -0.028em; max-width: 16ch; }
+.page-head .lead { margin-top: 24px; max-width: 52ch; }
+.head-meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 30px; }
+
+/* filter bar */
+.filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding-block: 22px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); position: sticky; top: 64px; background: color-mix(in srgb, var(--paper) 90%, transparent); backdrop-filter: blur(8px); z-index: 20; }
+.filter-btn {
+  font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+  border: 1px solid var(--line-2); background: transparent; color: var(--ink-soft);
+  padding: 0.55em 0.95em; border-radius: 100px; cursor: pointer; transition: all .2s;
+}
+.filter-btn:hover { border-color: var(--terra); color: var(--ink); }
+.filter-btn.active { background: var(--grad-saffron); color: #1B1206; border-color: transparent; font-weight: 500; box-shadow: 0 4px 18px -6px rgba(242,163,60,0.5); }
+.filter-count { margin-left: auto; }
+
+/* gallery */
+.gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(18px, 2.4vw, 30px); padding-top: clamp(36px, 5vw, 60px); }
+.gitem { display: flex; flex-direction: column; transition: opacity .35s, transform .35s; }
+.gitem.hide { display: none; }
+.gitem .ph { width: 100%; aspect-ratio: 4 / 3.3; border-radius: 4px; }
+.gitem.tall .ph { aspect-ratio: 4 / 5; }
+.gitem-cap { position: relative; margin-top: 14px; padding-right: 66px; }
+.gitem-cap h3 { font-size: 1.22rem; font-weight: 480; line-height: 1.14; }
+.gitem-cat { display: inline-block; font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--terra-deep); white-space: nowrap; }
+.gitem-cap .gitem-cat { position: absolute; top: 3px; right: 0; }
+.gitem .meta { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-faint); margin-top: 4px; }
+@media (max-width: 880px){ .gallery{ grid-template-columns: repeat(2,1fr);} .gitem.tall .ph{aspect-ratio:4/3.3;} }
+@media (max-width: 560px){ .gallery{ grid-template-columns: 1fr;} .filters{top:62px;} }
+
+/* feature case study */
+.feature { background: var(--paper-2); }
+.feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(28px, 4vw, 64px); align-items: center; }
+.feature .ph { aspect-ratio: 5/4; border-radius: 5px; }
+.feature h2 { font-size: clamp(1.9rem, 3.2vw, 2.8rem); margin: 16px 0 0; }
+.feature p { color: var(--ink-soft); margin: 18px 0; max-width: 46ch; }
+.feature .spec-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 22px 0 26px; }
+@media (max-width: 820px){ .feature-grid{ grid-template-columns:1fr;} }
+
+/* closing reuse — molten saffron */
+.closing { background: var(--paper); }
+.closing-card { background: linear-gradient(150deg, #F4AC45 0%, #E08A1E 55%, #B96F10 100%); color: #1B1206; border-radius: 6px; padding: clamp(40px,6vw,76px); position: relative; overflow: hidden; text-align: center; box-shadow: 0 30px 80px -30px rgba(242,163,60,0.45); }
+.closing-card::after { content: "आकार"; position: absolute; right: 1%; bottom: -34%; font-family: var(--font-deva); font-size: clamp(8rem,16vw,16rem); color: rgba(255,246,230,0.14); line-height: 0.7; }
+.closing-card h2 { font-size: clamp(2rem,4.4vw,3.3rem); color: #1B1206; position: relative; z-index: 1; }
+.closing-card p { position: relative; z-index: 1; color: #46300E; max-width: 40ch; margin: 16px auto 30px; }
+.closing-card .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; position: relative; z-index: 1; }
+.closing-card .btn-onink { background: #16100A; color: #F4ECDB; box-shadow: 0 10px 28px -12px rgba(0,0,0,0.55); }
+.closing-card .btn-onink:hover { background: #000; }
+.closing-card .btn-ghost { color: #2A1C08; border-color: rgba(27,18,6,0.45); }
+.closing-card .btn-ghost:hover { border-color: #1B1206; background: rgba(27,18,6,0.08); color: #1B1206; box-shadow: none; }

@@ -1,0 +1,72 @@
+[
+  {
+    "file": "index.html",
+    "route": "",
+    "name": "home",
+    "title": "Akara Labs — Giving form to ideas",
+    "description": "A prototyping and product-engineering studio in India. CAD, 3D printing, and small-batch production for hardware founders, robotics, drones, IoT, defence and industrial clients — plus premium custom gifting.",
+    "dataLogo": "wordmark",
+    "dataHero": "layers",
+    "mainClass": ""
+  },
+  {
+    "file": "work/index.html",
+    "route": "work",
+    "name": "work",
+    "title": "Work — Akara Labs",
+    "description": "Selected prototyping and production work from Akara Labs — drone frames, robotic grippers, IoT enclosures, industrial parts, defence housings and custom gifting.",
+    "dataLogo": "wordmark",
+    "dataHero": "layers",
+    "mainClass": ""
+  },
+  {
+    "file": "about/index.html",
+    "route": "about",
+    "name": "about",
+    "title": "About — Akara Labs",
+    "description": "Akara Labs is a prototyping and product-engineering studio in India, founded by an engineer working across AI, IoT, robotics, drones and defence. आकара means form — the act of giving shape to what does not yet exist.",
+    "dataLogo": "wordmark",
+    "dataHero": "layers",
+    "mainClass": ""
+  },
+  {
+    "file": "materials/index.html",
+    "route": "materials",
+    "name": "materials",
+    "title": "Materials guide — Akara Labs",
+    "description": "A plain-English guide to the polymers and resins Akara Labs prints — what each is, what it's best for, and how to choose. You don't need to know these going in; we'll recommend.",
+    "dataLogo": "wordmark",
+    "dataHero": "layers",
+    "mainClass": ""
+  },
+  {
+    "file": "faq/index.html",
+    "route": "faq",
+    "name": "faq",
+    "title": "FAQ — Akara Labs",
+    "description": "Answers on files, materials, minimum quantities, lead times, shipping, payment and IP — everything you might want to know before starting a project with Akara Labs.",
+    "dataLogo": "wordmark",
+    "dataHero": "layers",
+    "mainClass": ""
+  },
+  {
+    "file": "start/index.html",
+    "route": "start",
+    "name": "start",
+    "title": "Start a project — Akara Labs",
+    "description": "Tell us what you're making. Upload a file or describe the idea — we'll come back with a quote and a plan within 12 hours.",
+    "dataLogo": "wordmark",
+    "dataHero": "layers",
+    "mainClass": "start-main"
+  },
+  {
+    "file": "print/index.html",
+    "route": "print",
+    "name": "print",
+    "title": "3D printing request — Akara Labs",
+    "description": "Send us your model and print requirements — material, quality, infill, colour and finish — and we'll quote your 3D print within 12 hours. Not sure of the settings? We'll recommend them.",
+    "dataLogo": "wordmark",
+    "dataHero": "layers",
+    "mainClass": "print-main"
+  }
+]

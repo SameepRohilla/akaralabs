@@ -1,0 +1,104 @@
+# Caddy terminates TLS on your server and proxies to the Next.js container.
+#
+# Cloudflare stays in front as DNS + CDN, but the orange-cloud proxy must be
+# configured for "Full (strict)" SSL — Caddy holds a real Let's Encrypt
+# certificate, so Flexible mode would create a redirect loop.
+#
+# If you'd rather keep Cloudflare's proxy off (grey cloud), this works
+# unchanged and Caddy handles certificates on its own.
+
+{
+	email {$ACME_EMAIL}
+	# Uncomment to test the whole flow against Let's Encrypt's staging CA
+	# without burning rate limits:
+	# acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{$SITE_DOMAIN}, www.{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	# Redirect www to the bare domain so there's one canonical host.
+	@www host www.{$SITE_DOMAIN}
+	redir @www https://{$SITE_DOMAIN}{uri} permanent
+
+	# ── Certificate ──────────────────────────────────────────────────────
+	# By default Caddy gets a Let's Encrypt certificate automatically, which
+	# needs port 80 reachable by LE's validators.
+	#
+	# If you lock the origin down to Cloudflare's IP ranges
+	# (scripts/lock-origin.sh), ACME renewal breaks — LE's validators are not
+	# Cloudflare IPs — and the site goes down ~60 days later when the cert
+	# expires. Switch to a Cloudflare Origin CA certificate instead:
+	#
+	#   1. Cloudflare -> SSL/TLS -> Origin Server -> Create Certificate
+	#   2. Save the two PEMs as docker/origin/cert.pem and docker/origin/key.pem
+	#   3. Mount them: add to the caddy service in docker-compose.yml
+	#        - ./docker/origin:/etc/caddy/origin:ro
+	#   4. Uncomment the line below and restart Caddy
+	#
+	# Origin CA certs are free, last 15 years, need no renewal, and are
+	# trusted by Cloudflare in Full (strict) mode.
+	#
+	# tls /etc/caddy/origin/cert.pem /etc/caddy/origin/key.pem
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Hashed build assets never change under the same URL.
+	@immutable path /_next/static/* /assets/css/* /assets/js/* /assets/img/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	# Belt and braces on the private surfaces. Next already marks these
+	# no-store, but a stray Cloudflare "Cache Everything" page rule would
+	# otherwise be catastrophic — one customer's dashboard served to another.
+	# Setting it here means the origin says no even if the edge is misconfigured.
+	@private path /dashboard* /admin* /api/* /track/* /signin* /signup*
+	header @private {
+		Cache-Control "private, no-store, no-cache, must-revalidate"
+		-CDN-Cache-Control
+		Vary "Cookie"
+	}
+
+	# Health endpoint stays out of the access log — it fires every 30s.
+	@health path /api/health
+	log_skip @health
+
+	# Uploads and downloads can be large; give them room. Keep this above
+	# MAX_UPLOAD_BYTES so the app returns its own clear error rather than
+	# Caddy cutting the connection. Note that Cloudflare's own proxy limit
+	# (100 MB on Free/Pro) applies before this one when the domain is
+	# orange-clouded, so raising this alone is not enough.
+	request_body {
+		max_size 210MB
+	}
+
+	reverse_proxy web:3000 {
+		health_uri /api/health
+		health_interval 15s
+		health_timeout 5s
+
+		# Real client IP for our rate limiter, taken from Cloudflare when
+		# it's in front and from the socket otherwise.
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+
+		# A 200 MB CAD upload over a slow Indian connection needs patience.
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+			dial_timeout 10s
+		}
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 20MB
+			roll_keep 5
+		}
+		format json
+	}
+}

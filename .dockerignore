@@ -1,0 +1,14 @@
+node_modules
+ops
+.next
+.git
+.github
+.env*
+!.env.example
+backups
+shots
+.storage
+*.log
+Dockerfile
+docker-compose.yml
+README*.md

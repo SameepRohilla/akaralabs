@@ -1,0 +1,59 @@
+
+.faq-head { padding-top: clamp(48px, 7vw, 92px); padding-bottom: clamp(28px, 4vw, 48px); }
+.faq-head h1 { font-size: clamp(2.8rem, 6vw, 4.8rem); letter-spacing: -0.028em; max-width: 14ch; }
+.faq-head .lead { margin-top: 24px; max-width: 50ch; }
+
+/* layout: sticky group nav + accordion */
+.faq-layout { display: grid; grid-template-columns: 230px 1fr; gap: clamp(32px, 5vw, 80px); align-items: start; }
+.faq-nav { position: sticky; top: 92px; display: grid; gap: 2px; }
+.faq-nav a {
+  font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: 0.04em;
+  color: var(--ink-faint); padding: 9px 12px; border-radius: 3px; border-left: 1px solid transparent;
+  transition: all .2s;
+}
+.faq-nav a:hover { color: var(--ink); background: var(--paper-2); }
+.faq-nav a.active { color: var(--ink); border-left-color: var(--terra); background: var(--paper-2); }
+@media (max-width: 820px){ .faq-layout{ grid-template-columns: 1fr;} .faq-nav{ position: static; grid-auto-flow: column; overflow-x: auto; gap: 8px; padding-bottom: 6px; }
+  .faq-nav a{ white-space: nowrap; border-left: 0; border-bottom: 1px solid transparent; }
+  .faq-nav a.active{ border-left: 0; border-bottom-color: var(--terra); } }
+
+.faq-group { margin-bottom: clamp(40px, 5vw, 64px); scroll-margin-top: 92px; }
+.faq-group > .gh { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.faq-group > .gh .gn { font-family: var(--font-mono); font-size: 0.72rem; color: var(--terra-deep); letter-spacing: 0.08em; }
+.faq-group > .gh h2 { font-size: clamp(1.5rem, 2.4vw, 1.95rem); letter-spacing: -0.018em; }
+
+/* accordion */
+.qa { border-top: 1px solid var(--line); }
+.qa:last-child { border-bottom: 1px solid var(--line); }
+.qa summary {
+  list-style: none; cursor: pointer; padding: 20px 44px 20px 0; position: relative;
+  font-size: 1.1rem; font-weight: 500; letter-spacing: -0.012em; color: var(--ink);
+  transition: color .2s;
+}
+.qa summary::-webkit-details-marker { display: none; }
+.qa summary:hover { color: var(--terra-deep); }
+.qa summary .pm { position: absolute; right: 4px; top: 22px; width: 16px; height: 16px; flex: none; }
+.qa summary .pm::before, .qa summary .pm::after { content: ""; position: absolute; background: var(--ink-soft); transition: transform .3s cubic-bezier(.2,.7,.2,1), opacity .3s; }
+.qa summary .pm::before { left: 0; right: 0; top: 7.5px; height: 1.5px; }
+.qa summary .pm::after { top: 0; bottom: 0; left: 7.5px; width: 1.5px; }
+.qa[open] summary .pm::after { transform: scaleY(0); opacity: 0; }
+.qa[open] summary { color: var(--ink); }
+.qa .ans { overflow: hidden; max-height: 0; transition: max-height .35s cubic-bezier(.2,.7,.2,1); }
+.qa[open] .ans { max-height: 420px; }
+.qa .ans-inner { padding: 0 44px 24px 0; color: var(--ink-soft); font-size: 1rem; line-height: 1.6; max-width: 64ch; }
+.qa .ans-inner p { margin: 0 0 0.8em; } .qa .ans-inner p:last-child { margin-bottom: 0; }
+.qa .ans-inner a { color: var(--terra-deep); border-bottom: 1px solid var(--line-2); }
+.qa .ans-inner a:hover { border-color: var(--terra); }
+.qa .ans-inner strong { color: var(--ink); font-weight: 560; }
+
+/* closing — gold-lit raised section */
+.closing { background: var(--paper-2); color: var(--ink-soft); position: relative; overflow: hidden; border-top: 1px solid var(--line); }
+.closing::before { content: ""; position: absolute; right: -8%; top: -40%; width: 48%; height: 140%; background: radial-gradient(closest-side, rgba(242,163,60,0.10), transparent 70%); pointer-events: none; }
+.closing::after { content: "आकार"; position: absolute; right: 1%; bottom: -34%; font-family: var(--font-deva); font-size: clamp(8rem,16vw,16rem); color: rgba(242,163,60,0.05); line-height: 0.7; }
+.closing .inner { position: relative; z-index: 1; max-width: 40ch; }
+.closing .kicker { color: var(--terra-deep); } .closing .kicker::before { background: var(--terra); }
+.closing h2 { color: var(--ink); font-size: clamp(1.9rem, 3.4vw, 2.8rem); margin: 14px 0 16px; }
+.closing p { color: var(--ink-soft); margin: 0 0 28px; }
+.closing .cta-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.closing .btn-onink { background: var(--grad-saffron); color: #1B1206; box-shadow: 0 6px 24px -8px rgba(242,163,60,0.55); }
+.closing .btn-onink:hover { transform: translateY(-2px); }

@@ -1,0 +1,182 @@
+# Production stack for akaralabs.in on your own server.
+#
+#   docker compose pull && docker compose up -d
+#
+# Only Caddy binds to the host. The app and Postgres talk over the internal
+# network and are not reachable from outside the box.
+
+name: akaralabs
+
+services:
+  web:
+    image: ${IMAGE:-ghcr.io/OWNER/akaralabs:latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://akara:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/akara
+      AUTH_SECRET: ${AUTH_SECRET:?generate with openssl rand -base64 33}
+      AUTH_TRUST_HOST: "true"
+      NEXTAUTH_URL: ${SITE_URL:-https://akaralabs.in}
+      NEXT_PUBLIC_SITE_URL: ${SITE_URL:-https://akaralabs.in}
+
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-Akara Labs <hello@akaralabs.in>}
+      STUDIO_INBOX: ${STUDIO_INBOX:-hello@akaralabs.in}
+
+      CONTACT_EMAIL: ${CONTACT_EMAIL:-hello@akaralabs.in}
+      CONTACT_WHATSAPP: ${CONTACT_WHATSAPP:-917082089049}
+      GST_NUMBER: ${GST_NUMBER:-}
+      SOCIAL_INSTAGRAM: ${SOCIAL_INSTAGRAM:-}
+      SOCIAL_LINKEDIN: ${SOCIAL_LINKEDIN:-}
+
+      CRON_SECRET: ${CRON_SECRET:-}
+      STORAGE_DIR: /data/storage
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-99614720}
+    volumes:
+      - storage:/data/storage
+    networks: [internal]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: akara
+      POSTGRES_USER: akara
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Deterministic collation, so index behaviour matches across machines.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U akara -d akara"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks: [internal]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [web]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-akaralabs.in}
+      ACME_EMAIL: ${ACME_EMAIL:-hello@akaralabs.in}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [internal]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # Nightly backups of BOTH the database and the uploaded files.
+  #
+  # Uploaded CAD is the highest-value data here and the least replaceable —
+  # a weekly tarball means a customer who uploads on Monday can lose their
+  # file to a Saturday disk failure. So both run daily, on a tiered
+  # retention: 7 daily, 4 weekly, 3 monthly.
+  #
+  # These land on the same disk as the data they protect, which is not a
+  # backup. Copy ./backups off the box — see DEPLOY.md Stage 8.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - ./backups:/backups
+      - storage:/data/storage:ro
+    networks: [internal]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -u
+        mkdir -p /backups/daily /backups/weekly /backups/monthly
+
+        run_backup() {
+          stamp=$$(date -u +%Y%m%d-%H%M)
+          dow=$$(date -u +%u)     # 7 = Sunday
+          dom=$$(date -u +%d)
+
+          db="/backups/daily/db-$$stamp.sql.gz"
+          echo "==> dumping database to $$db"
+          if pg_dump -h db -U akara -d akara --no-owner | gzip > "$$db"; then
+            size=$$(stat -c%s "$$db")
+            # A dump under 2 KB is an error message, not a backup.
+            if [ "$$size" -lt 2048 ]; then
+              echo "==> DB DUMP SUSPICIOUSLY SMALL ($$size bytes) — keeping for inspection" >&2
+              mv "$$db" "$$db.suspect"
+            else
+              echo "==> db ok ($$size bytes)"
+            fi
+          else
+            echo "==> DB DUMP FAILED" >&2
+            rm -f "$$db"
+          fi
+
+          files="/backups/daily/storage-$$stamp.tar.gz"
+          echo "==> archiving uploads to $$files"
+          if tar czf "$$files" -C /data/storage . 2>/dev/null; then
+            echo "==> uploads ok ($$(stat -c%s "$$files") bytes)"
+          else
+            echo "==> UPLOAD ARCHIVE FAILED" >&2
+            rm -f "$$files"
+          fi
+
+          # Promote into weekly/monthly so the tiers are real copies, not links.
+          [ "$$dow" = "7" ] && cp -f "$$db" "$$files" /backups/weekly/ 2>/dev/null || true
+          [ "$$dom" = "01" ] && cp -f "$$db" "$$files" /backups/monthly/ 2>/dev/null || true
+
+          # Retention: 7 daily, 4 weekly (28d), 3 monthly (90d).
+          find /backups/daily   -name '*.gz' -mtime +7  -delete 2>/dev/null || true
+          find /backups/weekly  -name '*.gz' -mtime +28 -delete 2>/dev/null || true
+          find /backups/monthly -name '*.gz' -mtime +90 -delete 2>/dev/null || true
+
+          echo "==> backup cycle done; $$(du -sh /backups | cut -f1) on disk"
+        }
+
+        # One run at startup so a fresh deploy has a backup immediately,
+        # then daily at 02:30 IST (21:00 UTC) — quiet hours for the workshop.
+        run_backup
+
+        while true; do
+          now=$$(date -u +%s)
+          target=$$(date -u -d "today 21:00" +%s 2>/dev/null || echo $$((now + 86400)))
+          [ "$$target" -le "$$now" ] && target=$$((target + 86400))
+          sleep $$((target - now))
+          run_backup
+        done
+
+volumes:
+  pgdata:
+  storage:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:

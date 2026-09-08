@@ -1,0 +1,201 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Never let two deploys race onto the server.
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Fail fast on types and lint before spending time on a build.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # QEMU is only needed for cross-architecture builds. Harmless otherwise.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Add linux/arm64 if you end up on an Arm box — Oracle's free tier
+          # is Ampere A1, and AWS Graviton is cheaper than x86. Building both
+          # roughly doubles CI time, so it's off by default.
+          platforms: ${{ vars.BUILD_PLATFORMS || 'linux/amd64' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_SITE_URL=${{ vars.SITE_URL || 'https://akaralabs.in' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          envs: IMAGE
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd ${{ secrets.DEPLOY_PATH }}
+
+            PREVIOUS=$(grep -E '^IMAGE=' .env 2>/dev/null | cut -d= -f2- || true)
+            echo "==> current: ${PREVIOUS:-none}"
+            echo "==> new:     $IMAGE"
+
+            set_image() {
+              if grep -qE '^IMAGE=' .env; then
+                sed -i "s|^IMAGE=.*|IMAGE=$1|" .env
+              else
+                printf 'IMAGE=%s\n' "$1" >> .env
+              fi
+            }
+
+            migrations_applied() {
+              docker compose exec -T db psql -U akara -d akara -tAc \
+                "select count(*) from drizzle.__drizzle_migrations" 2>/dev/null || echo 0
+            }
+
+            # ---- 1. Always take a backup before a deploy that might migrate.
+            mkdir -p backups
+            SNAPSHOT="backups/pre-deploy-$(date -u +%Y%m%d-%H%M%S).sql.gz"
+            echo "==> backing up to $SNAPSHOT"
+            docker compose exec -T db pg_dump -U akara -d akara --no-owner | gzip > "$SNAPSHOT"
+            # A dump that is suspiciously small is not a backup.
+            if [ "$(stat -c%s "$SNAPSHOT")" -lt 2048 ]; then
+              echo "FATAL: backup looks empty ($(stat -c%s "$SNAPSHOT") bytes) — refusing to deploy" >&2
+              exit 1
+            fi
+            echo "==> backup ok ($(du -h "$SNAPSHOT" | cut -f1))"
+
+            MIG_BEFORE=$(migrations_applied)
+            echo "==> migrations applied before: $MIG_BEFORE"
+
+            # ---- 2. Deploy. Migrations run in the container entrypoint.
+            set_image "$IMAGE"
+            docker compose pull web
+            docker compose up -d --no-deps web
+
+            # ---- 3. Wait for health.
+            HEALTHY=0
+            for i in $(seq 1 30); do
+              cid=$(docker compose ps -q web)
+              status=$(docker inspect --format='{{.State.Health.Status}}' "$cid" 2>/dev/null || echo starting)
+              if [ "$status" = "healthy" ]; then HEALTHY=1; break; fi
+              if [ "$status" = "unhealthy" ]; then break; fi
+              sleep 10
+            done
+
+            MIG_AFTER=$(migrations_applied)
+            echo "==> migrations applied after: $MIG_AFTER"
+
+            if [ "$HEALTHY" = "1" ]; then
+              echo "==> healthy"
+              docker image prune -f --filter "until=168h" || true
+              # Keep 30 days of pre-deploy snapshots.
+              find backups -name 'pre-deploy-*.sql.gz' -mtime +30 -delete || true
+              exit 0
+            fi
+
+            echo "==> DEPLOY FAILED — container did not become healthy" >&2
+            docker compose logs --tail=120 web >&2
+
+            # ---- 4. Rolling back the image is only safe if the schema did not
+            #         move. Drizzle has no down-migrations, so putting old code
+            #         back in front of a new schema can make things worse than
+            #         leaving the new code broken — old code may reference a
+            #         column that a migration just renamed or dropped.
+            if [ "$MIG_AFTER" != "$MIG_BEFORE" ]; then
+              echo "" >&2
+              echo "!! NOT rolling back automatically." >&2
+              echo "!! This deploy applied $((MIG_AFTER - MIG_BEFORE)) migration(s)" >&2
+              echo "!! ($MIG_BEFORE -> $MIG_AFTER). The schema has moved, so the previous" >&2
+              echo "!! image may not be compatible with it." >&2
+              echo "" >&2
+              echo "   Decide deliberately. To restore the database and the old code:" >&2
+              echo "     cd ${{ secrets.DEPLOY_PATH }}" >&2
+              echo "     docker compose stop web" >&2
+              echo "     ./scripts/restore.sh $SNAPSHOT" >&2
+              echo "     sed -i 's|^IMAGE=.*|IMAGE=$PREVIOUS|' .env" >&2
+              echo "     docker compose up -d --no-deps web" >&2
+              echo "" >&2
+              echo "   Or fix forward, which is usually faster." >&2
+              exit 1
+            fi
+
+            if [ -n "$PREVIOUS" ]; then
+              echo "==> no migrations were applied; rolling back to $PREVIOUS" >&2
+              set_image "$PREVIOUS"
+              docker compose up -d --no-deps web
+            else
+              echo "==> no previous image recorded; leaving as-is" >&2
+            fi
+            exit 1
+
+      - name: Smoke test the live site
+        run: |
+          set -e
+          url="${{ vars.SITE_URL || 'https://akaralabs.in' }}"
+          echo "==> checking $url"
+          for path in / /work/ /print/ /articles/ /api/health; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url$path")
+            echo "$path -> $code"
+            [ "$code" = "200" ] || { echo "FAILED on $path"; exit 1; }
+          done
