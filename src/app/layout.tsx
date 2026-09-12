@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import LegacyEffects from "@/components/LegacyEffects";
 import { GOOGLE_FONTS, SITE, THEME_BOOTSTRAP } from "@/lib/site";
 import "./globals.css";
 
@@ -47,6 +48,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         {children}
+        {/* shared.js runs once; this re-runs its page-scoped effects after each
+            client-side navigation. Without it the new page renders invisible,
+            because .reveal starts at opacity:0. */}
+        <LegacyEffects />
         <Script src="/assets/js/image-slot.js" strategy="afterInteractive" />
         <Script src="/assets/js/art.js" strategy="afterInteractive" />
         <Script src="/assets/js/i18n.js" strategy="afterInteractive" />

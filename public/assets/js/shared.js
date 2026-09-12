@@ -217,43 +217,67 @@
   }
 
   // ---- Reveal on scroll (with robust fallbacks) ----
-  var reveals = [].slice.call(document.querySelectorAll('.reveal'));
-  reveals.forEach(function (el, i) {
-    el.style.transitionDelay = (Math.min(i % 4, 3) * 80) + 'ms';
-  });
+  //
+  // These run again after every client-side navigation, not just on first load.
+  // Next.js swaps the contents of <main> without reloading the document, so a
+  // one-shot querySelectorAll captured at load time knows nothing about the
+  // markup of the page you just navigated to. Since .reveal starts at
+  // `opacity: 0` and only becomes visible when this code adds `.in`, a stale
+  // element list meant the new page rendered correctly and then sat there
+  // invisible — which looks exactly like a page that failed to load, and comes
+  // right on refresh because a refresh re-runs this file.
+  //
+  // Everything below is therefore idempotent and keyed off a data attribute,
+  // so re-running only ever picks up elements that are new.
   function show(el) { el.classList.add('in'); }
   function inView(el) {
     var r = el.getBoundingClientRect();
     return r.top < (window.innerHeight || 0) * 0.94 && r.bottom > 0;
   }
-  function sweep() { reveals.forEach(function (el) { if (!el.classList.contains('in') && inView(el)) show(el); }); }
-
-  if ('IntersectionObserver' in window) {
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) { if (e.isIntersecting) { show(e.target); io.unobserve(e.target); } });
-    }, { threshold: 0, rootMargin: '0px 0px -6% 0px' });
-    reveals.forEach(function (el) { io.observe(el); });
+  function allReveals() { return [].slice.call(document.querySelectorAll('.reveal')); }
+  function sweep() {
+    allReveals().forEach(function (el) { if (!el.classList.contains('in') && inView(el)) show(el); });
   }
-  requestAnimationFrame(sweep);
+
+  var revealIO = 'IntersectionObserver' in window
+    ? new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) { if (e.isIntersecting) { show(e.target); revealIO.unobserve(e.target); } });
+      }, { threshold: 0, rootMargin: '0px 0px -6% 0px' })
+    : null;
+
+  function initReveals() {
+    var fresh = allReveals().filter(function (el) { return !el.hasAttribute('data-ak-rv'); });
+    fresh.forEach(function (el, i) {
+      el.setAttribute('data-ak-rv', '1');
+      el.style.transitionDelay = (Math.min(i % 4, 3) * 80) + 'ms';
+      if (revealIO) revealIO.observe(el);
+    });
+    requestAnimationFrame(sweep);
+    setTimeout(sweep, 250);
+    // Belt and braces: never leave content invisible because an observer or a
+    // transition misfired. Scoped to the elements present when this ran.
+    setTimeout(function () { fresh.forEach(show); }, 1200);
+    setTimeout(function () {
+      fresh.forEach(function (el) {
+        if (parseFloat(getComputedStyle(el).opacity) < 0.85) {
+          el.style.transition = 'none'; el.style.opacity = '1'; el.style.transform = 'none';
+        }
+      });
+      if (obj) [].slice.call(obj.children).forEach(function (d) {
+        if (parseFloat(getComputedStyle(d).opacity) < 0.85) { d.style.animation = 'none'; d.style.opacity = '1'; }
+      });
+    }, 1700);
+  }
+
   window.addEventListener('scroll', sweep, { passive: true });
   window.addEventListener('load', sweep);
-  setTimeout(sweep, 250);
-  setTimeout(function () { reveals.forEach(show); }, 1200);
-  setTimeout(function () {
-    reveals.forEach(function (el) {
-      if (parseFloat(getComputedStyle(el).opacity) < 0.85) {
-        el.style.transition = 'none'; el.style.opacity = '1'; el.style.transform = 'none';
-      }
-    });
-    if (obj) [].slice.call(obj.children).forEach(function (d) {
-      if (parseFloat(getComputedStyle(d).opacity) < 0.85) { d.style.animation = 'none'; d.style.opacity = '1'; }
-    });
-  }, 1700);
 
   // ---- Animated counters: <span data-count="500" data-suffix="+"> ----
-  (function counters() {
-    var els = [].slice.call(document.querySelectorAll('[data-count]'));
+  function initCounters() {
+    var els = [].slice.call(document.querySelectorAll('[data-count]'))
+      .filter(function (el) { return !el.hasAttribute('data-ak-c'); });
     if (!els.length) return;
+    els.forEach(function (el) { el.setAttribute('data-ak-c', '1'); });
     function animate(el) {
       var target = parseFloat(el.getAttribute('data-count')) || 0;
       var dur = 1600;
@@ -283,18 +307,23 @@
     } else {
       els.forEach(function (el) { el.textContent = el.getAttribute('data-count'); });
     }
-  })();
+  }
 
   // ---- Marquee: duplicate track content for a seamless loop ----
-  (function marquee() {
+  function initMarquee() {
     [].slice.call(document.querySelectorAll('.marquee-track')).forEach(function (track) {
+      if (track.hasAttribute('data-ak-mq')) return;   // or it doubles on every visit
+      track.setAttribute('data-ak-mq', '1');
       track.innerHTML = track.innerHTML + track.innerHTML;
     });
-  })();
+  }
 
   // ---- Card pointer highlight (--mx follows the cursor) ----
-  if (!REDUCED && window.matchMedia && window.matchMedia('(hover: hover)').matches) {
+  function initPointerEffects() {
+    if (REDUCED || !window.matchMedia || !window.matchMedia('(hover: hover)').matches) return;
     [].slice.call(document.querySelectorAll('.card')).forEach(function (card) {
+      if (card.hasAttribute('data-ak-ptr')) return;
+      card.setAttribute('data-ak-ptr', '1');
       card.addEventListener('pointermove', function (e) {
         var r = card.getBoundingClientRect();
         card.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
@@ -303,6 +332,8 @@
 
     // ---- Magnetic primary buttons (subtle pull toward cursor) ----
     [].slice.call(document.querySelectorAll('.btn-primary')).forEach(function (btn) {
+      if (btn.hasAttribute('data-ak-mag')) return;
+      btn.setAttribute('data-ak-mag', '1');
       var raf = null;
       btn.addEventListener('pointermove', function (e) {
         var r = btn.getBoundingClientRect();
@@ -321,26 +352,31 @@
   }
 
   // ---- Parallax watermarks: [data-parallax="0.15"] ----
-  (function parallax() {
+  var parallaxBound = false;
+  function initParallax() {
     if (REDUCED) return;
-    var els = [].slice.call(document.querySelectorAll('[data-parallax]'));
-    if (!els.length) return;
+    // Re-query on every call rather than closing over a snapshot, so the new
+    // page's watermarks are included after a client-side navigation.
+    function els() { return [].slice.call(document.querySelectorAll('[data-parallax]')); }
     var ticking = false;
     function update() {
       ticking = false;
       var vh = window.innerHeight || 1;
-      els.forEach(function (el) {
+      els().forEach(function (el) {
         var f = parseFloat(el.getAttribute('data-parallax')) || 0.15;
         var r = el.getBoundingClientRect();
         var center = r.top + r.height / 2 - vh / 2;
         el.style.transform = 'translateY(' + (-center * f) + 'px)';
       });
     }
-    window.addEventListener('scroll', function () {
-      if (!ticking) { ticking = true; requestAnimationFrame(update); }
-    }, { passive: true });
+    if (!parallaxBound) {
+      parallaxBound = true;   // one scroll listener, however many navigations
+      window.addEventListener('scroll', function () {
+        if (!ticking) { ticking = true; requestAnimationFrame(update); }
+      }, { passive: true });
+    }
     update();
-  })();
+  }
 
   // ---- i18n: English ⇄ Hindi (site-wide, persists) ----
   (function initI18N() {
@@ -396,5 +432,30 @@
     setLang(saved);
     setTimeout(function () { if (document.documentElement.getAttribute('lang') === 'hi') toHi(); }, 400);
     window.akaraSetLang = setLang;
+    window.akaraApplyLang = function () { setLang(document.documentElement.getAttribute('lang') || 'en'); };
   })();
+
+  /* ---- Page-scoped effects, re-runnable after client-side navigation ----
+   *
+   * The blocks above this point set up things that live in the layout — the
+   * logo, the nav, the theme toggle, the WhatsApp button — and those survive a
+   * route change, so they are initialised once.
+   *
+   * Everything in here belongs to the markup inside <main>, which Next.js
+   * replaces wholesale when you follow a link without reloading the document.
+   * Each function is idempotent, so calling this again only picks up elements
+   * that weren't there before.
+   */
+  function pageInit() {
+    initReveals();
+    initCounters();
+    initMarquee();
+    initPointerEffects();
+    initParallax();
+    // Re-apply the translation pass to the markup that just arrived.
+    if (window.akaraApplyLang) window.akaraApplyLang();
+  }
+
+  pageInit();
+  window.akaraPageInit = pageInit;
 })();

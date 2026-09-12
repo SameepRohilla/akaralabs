@@ -37,9 +37,21 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image: ${{ steps.meta.outputs.tags }}
+      image: ${{ steps.name.outputs.image }}
     steps:
       - uses: actions/checkout@v4
+
+      # Container registries reject any uppercase character in a repository
+      # name, and github.repository preserves the owner's capitalisation —
+      # "SameepRohilla/akaralabs" is a perfectly normal GitHub name and an
+      # invalid image name. docker/metadata-action lowercases what it is given,
+      # so the build push survives, but the deploy job below builds its own
+      # reference by string interpolation and would pull a tag that cannot
+      # exist. Lowercase it once, here, and let both jobs use this.
+      - id: name
+        env:
+          REPO: ${{ github.repository }}
+        run: echo "image=${REGISTRY}/${REPO,,}" >> "$GITHUB_OUTPUT"
 
       # QEMU is only needed for cross-architecture builds. Harmless otherwise.
       - uses: docker/setup-qemu-action@v3
@@ -84,7 +96,7 @@ jobs:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1
         env:
-          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          IMAGE: ${{ needs.build.outputs.image }}:sha-${{ github.sha }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}

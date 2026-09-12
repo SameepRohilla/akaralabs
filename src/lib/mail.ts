@@ -6,15 +6,58 @@ import { SITE } from "./site";
    unset, mail is logged instead of sent so dev never needs a mail server. */
 
 let transport: nodemailer.Transporter | null = null;
+let configWarned = false;
+
+/* Nodemailer's own error for a half-configured server is `Missing credentials
+   for "PLAIN"` with no indication of which variable is absent, and it appears
+   once per email rather than once at startup. This says what to actually fix. */
+function configProblem(): string | null {
+  const host = process.env.SMTP_HOST;
+  if (!host) return null;
+
+  const port = Number(process.env.SMTP_PORT ?? 587);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  // A relay on the local machine, or port 25, legitimately takes no credentials.
+  const localRelay = port === 25 || /^(localhost|127\.0\.0\.1|::1|mailhog|mailpit)$/i.test(host);
+
+  if (user && !pass) return `SMTP_USER is set to ${user} but SMTP_PASS is empty`;
+  if (!user && pass) return "SMTP_PASS is set but SMTP_USER is empty";
+  if (!user && !pass && !localRelay) {
+    return `SMTP_HOST is ${host}:${port} but SMTP_USER and SMTP_PASS are both empty`;
+  }
+  return null;
+}
 
 function getTransport() {
   if (transport) return transport;
+
   const host = process.env.SMTP_HOST;
   if (!host) return null;
+
+  /* Half-configured SMTP used to authenticate, fail, and lose the message. Log
+     instead — the same behaviour as no SMTP at all — because a delivery that
+     cannot succeed is not worth attempting once per email. */
+  const problem = configProblem();
+  if (problem) {
+    if (!configWarned) {
+      configWarned = true;
+      console.error(
+        `[mail] SMTP is half-configured, so mail is being LOGGED, NOT SENT.\n` +
+          `       ${problem}\n` +
+          `       Fix it, or comment out SMTP_HOST entirely to silence this.\n` +
+          `       Verification links, quotes and tracking emails will not arrive until then.`,
+      );
+    }
+    return null;
+  }
+
+  const port = Number(process.env.SMTP_PORT ?? 587);
   transport = nodemailer.createTransport({
     host,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: process.env.SMTP_SECURE === "1" || Number(process.env.SMTP_PORT) === 465,
+    port,
+    secure: process.env.SMTP_SECURE === "1" || port === 465,
     auth: process.env.SMTP_USER
       ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
       : undefined,

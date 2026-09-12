@@ -15,8 +15,8 @@
  * This is for development only. It is not what runs in production — that is the
  * postgres:16-alpine service in docker-compose.yml, on the server.
  */
-import { rm } from "node:fs/promises";
-import { resolve } from "node:path";
+import { rm, access } from "node:fs/promises";
+import { resolve, join } from "node:path";
 import EmbeddedPostgres from "embedded-postgres";
 
 const DATA_DIR = resolve(process.cwd(), ".pgdata");
@@ -41,13 +41,32 @@ const pg = new EmbeddedPostgres({
   onLog: () => {}, // Postgres' own startup chatter isn't useful here
 });
 
-// initialise() throws if the cluster already exists, which is the normal case
-// on every run after the first.
-try {
-  await pg.initialise();
-  console.log("initialised a new cluster in .pgdata");
-} catch {
+/* Decide from the data directory itself rather than from whether initialise()
+   threw. PG_VERSION is written at the end of a successful initdb, so its
+   presence means a usable cluster. Treating any failure as "already exists"
+   turns a genuinely broken or half-written directory into a misleading
+   "reusing the cluster" followed by a confusing connection error. */
+const initialised = await access(join(DATA_DIR, "PG_VERSION")).then(
+  () => true,
+  () => false,
+);
+
+if (initialised) {
   console.log("reusing the cluster in .pgdata");
+} else {
+  try {
+    await pg.initialise();
+    console.log("initialised a new cluster in .pgdata");
+  } catch (err) {
+    console.error(`\nfailed to create the cluster in ${DATA_DIR}:`);
+    console.error(err instanceof Error ? err.message : String(err));
+    console.error(
+      `\nIf that directory exists but is incomplete — an interrupted first run, or\n` +
+        `a copy from another machine — remove it and try again:\n\n` +
+        `  npm run db:local -- reset\n`,
+    );
+    process.exit(1);
+  }
 }
 
 try {

@@ -9,7 +9,8 @@ name: akaralabs
 
 services:
   web:
-    image: ${IMAGE:-ghcr.io/OWNER/akaralabs:latest}
+    # Registry names must be lowercase, including the owner — see DEPLOY.md 4b.
+    image: ${IMAGE:-ghcr.io/your-github-username/akaralabs:latest}
     restart: unless-stopped
     depends_on:
       db:
@@ -62,7 +63,14 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./backups:/backups
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U akara -d akara"]
+      # pg_isready only asks whether the server is accepting connections — it
+      # never authenticates, so a wrong password still reports "Healthy" and
+      # compose happily starts the app against a database that will refuse it.
+      # Connect over TCP with the real credentials instead, which is what the
+      # app does.
+      test:
+        - CMD-SHELL
+        - PGPASSWORD="$$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U akara -d akara -c 'select 1' >/dev/null 2>&1
       interval: 10s
       timeout: 5s
       retries: 10

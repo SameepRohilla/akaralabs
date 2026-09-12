@@ -240,11 +240,33 @@ async function checkMail() {
   }
 
   const port = Number(process.env.SMTP_PORT ?? 587);
+
+  /* Catch a half-configured server before trying to connect, because
+     nodemailer's error for it — `Missing credentials for "PLAIN"` — doesn't say
+     which variable is missing. This is the single most common way to end up
+     with an app that looks fine and quietly sends no email at all. */
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+  const localRelay = port === 25 || /^(localhost|127\.0\.0\.1|::1|mailhog|mailpit)$/i.test(host);
+
+  if (smtpUser && !smtpPass) {
+    fail("mail", `SMTP_USER is ${smtpUser} but SMTP_PASS is empty`, "Mail will be logged, not sent. Set SMTP_PASS — most providers need an app-specific password, not your login password.");
+    return;
+  }
+  if (!smtpUser && smtpPass) {
+    fail("mail", "SMTP_PASS is set but SMTP_USER is empty", "Set SMTP_USER to the mailbox that password belongs to.");
+    return;
+  }
+  if (!smtpUser && !smtpPass && !localRelay) {
+    fail("mail", `SMTP_HOST is ${host}:${port} but SMTP_USER and SMTP_PASS are both empty`, "Either fill them in, or comment out SMTP_HOST so mail is logged deliberately rather than failing on every send.");
+    return;
+  }
+
   const transport = nodemailer.createTransport({
     host,
     port,
     secure: process.env.SMTP_SECURE === "1" || port === 465,
-    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+    auth: smtpUser ? { user: smtpUser, pass: smtpPass } : undefined,
     connectionTimeout: 10000,
   });
 

@@ -275,6 +275,17 @@ Verify with `npm run preflight`: it opens a real SMTP connection and
 authenticates. `✓ SMTP … accepted the connection and credentials` means it
 genuinely works, not just that the variables are set.
 
+**Set all of these or none of them.** `SMTP_HOST` with an empty `SMTP_PASS` is
+the worst state to be in: it isn't treated as "no email configured", it's a
+server that fails to authenticate. Every send then errors with nodemailer's
+`Missing credentials for "PLAIN"`, which names no variable, and appears once per
+email rather than once at startup.
+
+The app now catches that case and falls back to logging mail with one warning
+naming the missing variable, and `preflight` fails on it before you deploy. But
+the rule stands: until you have a real password, leave the whole SMTP block
+commented out, and mail is logged deliberately rather than lost.
+
 ### 1c. Google sign-in
 
 1. [console.cloud.google.com](https://console.cloud.google.com) → create a
@@ -429,13 +440,99 @@ Approximate monthly cost. **Verify at signup** — pricing moves.
 | **DigitalOcean, Bangalore** | **$12** (₹1,050) for 2 GB / 1 vCPU / 50 GB / 2 TB transfer. $24 (₹2,100) for 4 GB / 2 vCPU / 80 GB | Bangalore | The boring correct answer. Good docs, reliable, one-click backups, and the 2 GB tier is exactly what this needs. Start here unless you have a reason not to. |
 | **AWS Lightsail, Mumbai** | ~$10–20 | Mumbai | Similar to DigitalOcean. Worth it if you want S3 Mumbai for backups in the same account and bill. |
 | **Oracle Cloud Always Free** | **₹0** | Mumbai, Hyderabad | Generous Arm-based free tier that doesn't expire. Two real catches: Arm capacity in Indian regions is frequently unavailable to free accounts, and you'd need a multi-arch Docker build (`platforms: linux/amd64,linux/arm64`). Worth ten minutes to try — if you get an instance, it's free forever. |
-| **Indian providers** — E2E Networks, CtrlS, Hostinger India, Zoho's own cloud | varies, often INR-billed | Delhi, Mumbai, Chennai, Noida | Strongest story for a defence-adjacent client: Indian company, Indian data centre, Indian jurisdiction, INR invoice with GST you can claim. E2E is NSE-listed and used seriously. Check you get full root and a dedicated public IP — not shared hosting. |
+| **Bluehost NVMe 4** ← what you bought | **₹396/mo** promo (₹9,504 for 24 months upfront), **₹887/mo** on renewal. 2 vCPU / 4 GB DDR5 / 100 GB NVMe / unmetered | **Mumbai** — selectable at checkout, though their VPS page doesn't list it | Best spec-per-rupee of anything here, and the platform fits: full root, cPanel optional rather than forced, plain-OS images, Portainer offered as a one-click app. One real gap: **no VM snapshots at all**, so Stage 8's backup is your only recovery path. |
+| **Hostinger KVM 1** | **₹599/mo** promo, **₹999/mo** on renewal. Promo needs **24 months paid upfront** — ₹14,376, or ₹16,964 with GST. 1 vCPU / 4 GB / 50 GB NVMe / 4 TB | India | Cheapest India option by a distance, and the spec beats what this app needs. Full root, dedicated IPv4, Docker template, free weekly backups and snapshots, 30-day refund. The cost is lock-in: two years upfront on a provider you haven't run yet, and renewal is 67% higher. See the checks below before paying. |
+| **Hostinger KVM 2** | **₹799/mo** promo, **₹1,199/mo** renewal. 2 vCPU / 8 GB / 100 GB / 8 TB | India | ₹200/mo more than KVM 1 at both promo and renewal, for double the cores and disk. Only worth it for the 100 GB — at ~7 GB of CAD a year, 50 GB is already three or four years. |
+| **E2E Networks** | ~$32/mo (~₹2,800) for their entry CPU instance — 2 vCPU / 6 GB | Noida/NCR, Chennai | NSE-listed Indian company, the strongest answer for a defence-adjacent client. But there is **no small SKU** — their entry point is roughly 3× DigitalOcean for capacity you won't use. Revisit when a client's contract demands an Indian vendor, not before. |
+| **Other Indian providers** — CtrlS, Zoho's own cloud | varies, INR-billed | Mumbai, Chennai, Hyderabad | Same story as E2E. Check you get full root and a dedicated public IP — not shared hosting. |
 | **Hetzner / European VPS** | ~₹400–550 | Germany | Half the price, but **rules itself out** on your residency requirement. Noted so you don't rediscover it and wonder. |
+
+#### If you're on Bluehost
+
+The platform suits this app well. Full root, cPanel is a paid add-on rather than
+a forced install (so nothing is squatting on 80/443), plain-OS Ubuntu images, and
+Portainer shipped as a one-click template — which is a hoster telling you Docker
+is welcome. Their acceptable-use policy restricts nothing about containers or
+long-running daemons.
+
+**On the region:** their VPS page lists five data centres — USA (Virginia), USA
+(Arizona), London, Toronto, Amsterdam — and no Indian location, on the Indian
+storefront as well as the US one. **That list is out of date. Mumbai is
+selectable at checkout**, under Location in the purchase flow, and a Mumbai
+instance shows an apt mirror of `vps-oci-ap-mumbai-1-new.clouds.archive.ubuntu.com`
+— `oci` plus Oracle's own identifier for its Mumbai region, consistent with
+Oracle's public statement that Newfold Digital moved its hosting onto Oracle
+Cloud.
+
+So pick Mumbai at checkout and the metal is in India. Don't take the marketing
+page's silence as an answer either way — confirm it from the machine:
+
+```bash
+bash scripts/check-server.sh
+```
+
+That reads the region from the cloud's own metadata service and says plainly
+whether it's in India, alongside the other things a marketing page can't tell
+you: whether 80/443 are free, whether it can reach ghcr.io to pull the image, and
+whether outbound 587 works.
+
+Two things to handle on Bluehost specifically:
+
+- **There are no VM snapshots.** Their user agreement puts backups entirely on
+  you, in capitals, and no snapshot feature is documented anywhere. Stage 8's
+  daily dump and its off-box copy stop being good practice and become the only
+  thing between you and total loss. Do that stage on day one, not later.
+- **Test outbound SMTP on 587 before trusting email.** `check-server.sh` does
+  this. On OCI-backed infrastructure port 25 is very likely blocked — fine, this
+  app doesn't use it — but 587 must work or every quote and verification email
+  fails.
+
+And a point no command settles: since September 2025 the contract is with
+**Bluehost Inc., Florida**, whose terms say the service is "controlled and
+operated by us from our offices within the United States." With the disk in
+Mumbai you have the substance of residency, but not a written commitment to it.
+For a defence-adjacent client who asks formally, that's the gap the Indian-entity
+providers in the table above close. Nothing to act on today — worth knowing
+before someone asks.
+
+#### If you're looking at Hostinger — check these five things first
+
+Hostinger KVM works for this app on paper, and the price is genuinely hard to
+argue with. The risk isn't the spec, it's that the cheap price is 24 months
+prepaid. So spend the first 30 days proving it, inside the refund window:
+
+1. **India must appear, in stock, in the location dropdown for your tier.**
+   Hostinger's help centre lists India as a VPS location, but publishes it as
+   just "India" with no city for VPS (Mumbai is named officially only for their
+   Agency product), and adds "data center availability is subject to change
+   without prior notice." Check the dropdown *before* paying, not after.
+2. **Outbound SMTP on port 587 must not be blocked.** Plenty of budget hosts
+   block it to fight spam. If it's blocked, every quote and verification email
+   silently fails. Test it the moment you have the box:
+   `nc -zv smtp.zoho.in 587`.
+3. **A GST invoice with your GSTIN**, if you want to claim the input credit.
+   Listed prices exclude GST; confirm they'll put your GSTIN on the invoice.
+4. **Snapshot and restore once, on day one.** Their backups are *weekly*, which
+   is not enough on its own — Stage 8's daily dump is what you actually rely on.
+   Prove their restore works anyway, before you need it.
+5. **Then run Stage 5 in full.** If anything in it fails, refund inside 30 days
+   and move to DigitalOcean having lost nothing.
+
+Pick a plain Ubuntu 24.04 template rather than their one-click Docker image, and
+install Docker from Docker's own repository per Stage 2a — you want the same
+Docker version the compose file is tested against, not a vendor's snapshot.
 
 #### What I'd do
 
-**Start on DigitalOcean Bangalore, 2 GB, $12/month.** It's the least friction,
-the region is right, and if the studio grows you resize in place with a reboot.
+**If you want the cheapest correct thing and don't mind the commitment:
+Hostinger KVM 1, ₹599/mo on the 24-month term.** 4 GB and 50 GB is more than
+this app needs, the region is right, and the 30-day refund makes the prepay
+survivable — provided you actually use those 30 days on the checks above.
+
+**If you'd rather not prepay two years: DigitalOcean Bangalore, 2 GB,
+$12/month.** Roughly double Hostinger's promo price and it bills monthly with no
+lock-in, better documentation, and in-place resize on a reboot. This is the
+low-regret option, and the one to move to if Hostinger disappoints.
 
 **Try Oracle's free tier first if you have an hour** — if an Arm instance is
 available in Mumbai or Hyderabad, you get four cores and far more RAM than you
@@ -462,28 +559,220 @@ Whichever you pick, budget roughly:
 
 ### 2a. Docker
 
+Docker publishes **separate repositories for Debian and Ubuntu**, and the suites
+don't overlap — there is no `noble` under `linux/debian`. Hardcoding either one
+gives you a 404 and `does not have a Release file` on the other. So derive both
+the repository and the codename from the machine:
+
 ```bash
 sudo apt update && sudo apt install -y ca-certificates curl gnupg
+
+# Which Docker repo does this machine need?
+. /etc/os-release
+case "$ID" in
+  ubuntu)          DOCKER_REPO=ubuntu ;;
+  debian|raspbian) DOCKER_REPO=debian ;;
+  *)               DOCKER_REPO=${ID_LIKE%% *} ;;   # Mint, Pop!_OS, etc.
+esac
+# Derivatives set VERSION_CODENAME to their own name, which Docker doesn't
+# publish; UBUNTU_CODENAME is the upstream one and is what we want when present.
+DOCKER_SUITE=${UBUNTU_CODENAME:-$VERSION_CODENAME}
+echo "==> $DOCKER_REPO / $DOCKER_SUITE / $(dpkg --print-architecture)"
+
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg \
-  | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+sudo curl -fsSL "https://download.docker.com/linux/$DOCKER_REPO/gpg" \
+  -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+https://download.docker.com/linux/$DOCKER_REPO $DOCKER_SUITE stable" \
   | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-sudo usermod -aG docker $USER
+
+sudo apt update && sudo apt install -y \
+  docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker $USER   # skip this if you are root — root already has access
+```
+
+The `echo` line prints what it decided before touching apt. On Ubuntu 24.04 it
+should say `ubuntu / noble / amd64` (or `arm64`). If it says `debian` on an
+Ubuntu box, stop — something is wrong with `/etc/os-release`.
+
+**If you already ran a version of this that failed**, clear the bad entry first
+or apt will keep erroring on it:
+
+```bash
+sudo rm -f /etc/apt/sources.list.d/docker.list /etc/apt/keyrings/docker.gpg
 ```
 
 **Log out and back in**, then confirm:
 
 ```bash
-docker compose version      # must print v2.x
+docker --version            # Docker Engine
+docker compose version      # Compose — must be v2 or newer
+docker run --rm hello-world # proves the daemon works and can pull
 ```
+
+The third line is the one that matters. The first two only prove the CLI binary
+exists — they answer without ever contacting the daemon, so an install where
+`dockerd` isn't running still passes both and then fails on the first real
+command:
+
+```
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock.
+Is the docker daemon running?
+```
+
+That is common on images where Docker came preinstalled: the packages are there,
+the service was never enabled. Start it and make it survive a reboot:
+
+```bash
+sudo systemctl enable --now docker
+sudo systemctl status docker --no-pager | head -5
+docker run --rm hello-world
+```
+
+If it still won't start, read the reason rather than guessing:
+
+```bash
+sudo systemctl status containerd --no-pager | head -5   # docker needs this first
+sudo journalctl -u docker -n 50 --no-pager
+```
+
+Two causes worth knowing on a minimized cloud image. `iptables` missing —
+`dockerd` can't set up networking without it, so `sudo apt install -y iptables`
+and start again. Or the unit is masked, which `systemctl status` shows as
+`Loaded: masked`; `sudo systemctl unmask docker` then re-enable.
+
+Compose moved past v2 a while ago and the numbers now run well ahead of what
+most tutorials show — Engine 29.x with Compose v5.x is current as of writing.
+**A version number higher than you expected is not a problem.** What matters is
+that it's the `docker compose` subcommand rather than the old standalone
+`docker-compose` binary, and that it came from Docker's own repository — the
+package versions will look like `5:29.8.0-1~ubuntu.24.04~noble`, with the
+distro and codename in them.
+
+This `docker-compose.yml` deliberately has no top-level `version:` key. That
+field has been ignored since Compose v2 and produces a warning in newer
+versions, so there's nothing here for a major-version bump to break.
+
+Some providers ship Docker preinstalled on their plain-OS images — Bluehost
+does, which is consistent with them offering Portainer as a one-click app. If
+`apt install` reports everything is "already the newest version", that's why,
+and it's fine as long as the versions carry that Docker-repo suffix. Running
+the block anyway is harmless and confirms where the packages came from.
 
 Use Docker's own repository, not `apt install docker.io` — the distro package
 often ships an old Compose that doesn't understand this `docker-compose.yml`.
 
-### 2b. Firewall
+> `sudo apt autoremove` may offer to remove `bridge-utils`, `dnsmasq-base`,
+> `ubuntu-fan`, `dns-root-data` and `netcat-openbsd` after this. **None of them
+> are needed by modern Docker** — it manages bridges through netlink directly —
+> so letting them go is safe. `netcat-openbsd` is only a convenience for port
+> testing; `scripts/check-server.sh` uses bash's own `/dev/tcp` and doesn't
+> need it.
+
+#### Check your architecture now, not at Stage 6
+
+The repo isn't on the server yet at this point — that's 2d — so copy just this
+one script across **from your laptop**:
+
+```bash
+scp akaralabs/scripts/check-server.sh root@YOUR.SERVER.IP:~/
+```
+
+then, on the server:
+
+```bash
+bash ~/check-server.sh           # architecture, region, ports, egress, Docker
+```
+
+Or just the architecture, if you only want that one answer:
+
+```bash
+dpkg --print-architecture
+```
+
+If that says **`arm64`** — which it will on Oracle Cloud's Ampere A1 free tier,
+and on AWS Graviton — the CI build must produce an Arm image or your first
+deploy pulls an image the machine cannot run. It's a one-line change, but find
+it here rather than debugging a failed deploy:
+
+> GitHub → your repo → Settings → Secrets and variables → Actions → Variables →
+> New variable: `BUILD_PLATFORMS` = `linux/amd64,linux/arm64`
+
+The workflow already reads that variable and defaults to `linux/amd64` alone.
+Building both roughly doubles CI time, which is why it isn't the default.
+
+### 2b. Stop logging in as root with a password
+
+Do this before anything else that takes time. A fresh VPS with a public IP gets
+SSH brute-force attempts within minutes of coming up — not eventually, within
+minutes — and `root` with a password is the one combination those attempts are
+actually built to beat. Everything else in this runbook assumes the box is
+yours; this is the step that keeps it that way.
+
+**From your laptop**, create a key and install it:
+
+```bash
+ssh-keygen -t ed25519 -C 'akara-admin' -f ~/.ssh/akara_admin -N ''
+ssh-copy-id -i ~/.ssh/akara_admin.pub root@YOUR.SERVER.IP
+```
+
+Then prove it works *before* you disable anything:
+
+```bash
+ssh -i ~/.ssh/akara_admin root@YOUR.SERVER.IP 'echo key login works'
+```
+
+Only once that prints, turn off password logins **on the server**:
+
+```bash
+sudo tee /etc/ssh/sshd_config.d/00-akara-hardening.conf >/dev/null <<'EOF'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+EOF
+sudo sshd -t && sudo systemctl reload ssh
+```
+
+Two details that matter, because getting either wrong means you *think* you
+hardened the box and didn't:
+
+- **Use a drop-in, not `sed` on `/etc/ssh/sshd_config`.** Ubuntu includes
+  `/etc/ssh/sshd_config.d/*.conf` at the *start* of the config, and sshd takes
+  "the first obtained value" for each keyword. Cloud images routinely ship a
+  `50-cloud-init.conf` containing `PasswordAuthentication yes`, which therefore
+  beats anything you edit into the main file. Naming ours `00-` sorts it ahead
+  of that. Check what else is there: `ls /etc/ssh/sshd_config.d/`.
+- **`KbdInteractiveAuthentication no` as well.** Turning off
+  `PasswordAuthentication` alone can still leave a keyboard-interactive path
+  that prompts for the same password.
+
+Then verify it actually took, rather than trusting the reload:
+
+```bash
+sudo sshd -T | grep -E '^(passwordauthentication|permitrootlogin|kbdinteractive)'
+```
+
+That prints the *effective* configuration after all includes are resolved. It
+should say `passwordauthentication no`.
+
+**Keep your current session open** and confirm from a second terminal that you
+can still get in. If you can't, the open session is how you fix it. Locking
+yourself out of a server you've prepaid for two years is a bad afternoon.
+
+`PermitRootLogin prohibit-password` keeps root reachable by key, which the rest
+of this stage needs. Stage 6a creates a separate unprivileged `deploy` user for
+CI and switches this to `PermitRootLogin no` — that's the end state, this is the
+floor.
+
+Worth adding while you're here:
+
+```bash
+sudo apt install -y fail2ban        # bans IPs that keep guessing; sane defaults
+```
+
+### 2c. Firewall
 
 For the first deploy, open the three you need:
 
@@ -540,7 +829,7 @@ Two more worth having, both free:
   `sudo ufw allow from YOUR.IP to any port 22 proto tcp` and remove the
   blanket rule.
 
-### 2c. Files and secrets
+### 2d. Files and secrets
 
 ```bash
 mkdir -p ~/akaralabs/backups && cd ~/akaralabs
@@ -564,7 +853,7 @@ Now on the server:
 cp .env.example .env
 chmod 600 .env          # it holds your database password and API keys
 openssl rand -base64 33 # AUTH_SECRET
-openssl rand -base64 24 # POSTGRES_PASSWORD
+openssl rand -hex 24    # POSTGRES_PASSWORD  <- hex, NOT base64. See below.
 openssl rand -hex 24    # CRON_SECRET
 nano .env
 ```
@@ -572,7 +861,7 @@ nano .env
 Fill it in for the **subdomain** first:
 
 ```ini
-POSTGRES_PASSWORD=<the base64 you generated>
+POSTGRES_PASSWORD=<the hex you generated>
 DATABASE_URL=postgres://akara:<same password>@db:5432/akara
 AUTH_SECRET=<the other base64>
 
@@ -582,7 +871,56 @@ NEXTAUTH_URL=https://new.akaralabs.in
 SITE_DOMAIN=new.akaralabs.in
 ACME_EMAIL=hello@akaralabs.in
 
-IMAGE=ghcr.io/<you>/akaralabs:latest
+IMAGE=ghcr.io/<your-username-lowercase>/akaralabs:latest
+
+> **Use hex for `POSTGRES_PASSWORD`, not base64.** `openssl rand -base64` emits
+> `/` along with `+` and `=`, and the password goes straight into a URL:
+>
+> ```
+> DATABASE_URL=postgres://akara:Ab3/xY9zQ1w==@db:5432/akara
+> ```
+>
+> A `/` ends the authority section, so that is not a URL with an awkward
+> password in it — it is a different URL. The driver rejects it with the two
+> least helpful words available:
+>
+> ```
+> web-1  | ==> applying migrations
+> web-1  | migration failed: Invalid URL
+> ```
+>
+> About 40% of base64 passwords contain a `/`, so this is a coin-flip, not an
+> edge case. `openssl rand -hex 24` is 96 bits of entropy and URL-safe by
+> construction. The app now detects this case and names the offending character
+> instead of printing `Invalid URL`, but the generator is the actual fix.
+>
+> The password must be **identical** in `POSTGRES_PASSWORD` and inside
+> `DATABASE_URL`. Postgres takes its password from the first on the very first
+> boot only; changing it later in `.env` does not change the database.
+>
+> That last sentence is the one that catches people, so to be explicit about
+> what it means in practice. If you start the stack, then edit
+> `POSTGRES_PASSWORD`, then restart, you get:
+>
+> ```
+> web-1  | migration failed: password authentication failed for user "akara"
+> ```
+>
+> The app is using the new password; the database still has the old one, stored
+> in the `akaralabs_pgdata` volume when it initialised. Editing `.env` cannot
+> reach into an already-initialised data directory. Either put the original
+> password back, or — while there is no data worth keeping — throw the volume
+> away and let it initialise again:
+>
+> ```bash
+> docker compose down
+> docker volume rm akaralabs_pgdata
+> docker compose up -d
+> ```
+>
+> **`docker compose down` alone does not do this.** It removes containers and
+> keeps volumes, which is what you want every other day of the year and exactly
+> not what you want here.
 
 GOOGLE_CLIENT_ID=<from stage 1c>
 GOOGLE_CLIENT_SECRET=<from stage 1c>
@@ -668,10 +1006,24 @@ Or build on the server directly (needs the source, so clone it):
 ```bash
 git clone https://github.com/<you>/akaralabs.git /tmp/akara-src
 cd /tmp/akara-src
-docker build -t ghcr.io/<you>/akaralabs:latest \
+
+# Registry names must be lowercase — including your username. GitHub keeps the
+# capitalisation you signed up with, so "SameepRohilla" is a valid GitHub name
+# and an invalid image name:
+#   ERROR: invalid tag "ghcr.io/SameepRohilla/akaralabs:latest":
+#          repository name must be lowercase
+# Let the shell do it rather than typing it out:
+GH_USER=$(echo "<your-github-username>" | tr '[:upper:]' '[:lower:]')
+
+docker build -t "ghcr.io/$GH_USER/akaralabs:latest" \
   --build-arg NEXT_PUBLIC_SITE_URL=https://new.akaralabs.in .
 cd ~/akaralabs && rm -rf /tmp/akara-src
 ```
+
+Use that same lowercase form in `.env` for `IMAGE=`, and everywhere else a
+registry path appears. GHCR itself resolves the owner case-insensitively, so
+the lowercase name reaches the right account — it's only the local reference
+parser that refuses the capitals.
 
 ### 4c. Bring it up
 
@@ -709,7 +1061,53 @@ traffic.
 Everything should be `✓` now except possibly Google (which asks you to verify
 the redirect URI by hand — there's no way to check that from here).
 
-### 4e. Create your admin account
+**If `web` is restarting**, `exec` can't get in and says so:
+
+```
+Error response from daemon: Container … is restarting, wait until the
+container is running
+```
+
+Which is exactly when you most want to run the check. Start a throwaway
+container from the same image instead — same environment, same network, but it
+doesn't run the entrypoint that's crashing:
+
+```bash
+docker compose run --rm --no-deps --entrypoint node web ops/preflight.cjs
+```
+
+`--no-deps` skips starting the other services, `--entrypoint node` bypasses the
+migration step, and `--rm` cleans up after itself. The same trick opens a shell
+in a container you otherwise can't reach:
+
+```bash
+docker compose run --rm --no-deps --entrypoint sh web
+```
+
+### 4e. Check Cloudflare isn't rewriting your HTML
+
+Two Cloudflare features modify the HTML your origin sends, *after* React has
+rendered it. React then hydrates against markup that doesn't match what it
+produced, and you get a hydration error — which in a React app can degrade
+anything from one component to the whole page's interactivity.
+
+```bash
+curl -s https://new.akaralabs.in/ | grep -o '/cdn-cgi/[a-z/._-]*' | sort -u
+```
+
+Anything returned here is Cloudflare injecting into your markup:
+
+| What you see | Feature | Turn it off at |
+| --- | --- | --- |
+| `/cdn-cgi/l/email-protection` | **Email Address Obfuscation** — rewrites every `mailto:` into a span with `data-cfemail`. The footer has one on every page. | Scrape Shield → Email Address Obfuscation |
+| `rocket-loader.min.js` | **Rocket Loader** — defers and rewrites script execution. Reliably breaks React apps. | Speed → Optimization → Rocket Loader |
+| `/cdn-cgi/scripts/…/invisible.js` | Bot Fight Mode's JS injection | Security → Bots |
+
+Turn off Email Obfuscation and Rocket Loader. Neither does much for a site like
+this, and both trade a real bug for a marginal benefit. A clean run prints
+nothing at all.
+
+### 4f. Create your admin account
 
 If `ADMIN_EMAILS` contains your address, just sign in with Google and you're
 admin automatically. Otherwise seed one:
@@ -1043,7 +1441,7 @@ at `akaralabs.in` and not the subdomain.
 
   # Different domain, different secrets, and NEVER the production password.
   sed -i 's|akaralabs\.in|new.akaralabs.in|g' .env
-  sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -base64 24)|" .env
+  sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env
   sed -i "s|^AUTH_SECRET=.*|AUTH_SECRET=$(openssl rand -base64 33)|" .env
   # Point staging at a mail provider sandbox, or leave SMTP_HOST empty so
   # staging cannot email real customers.
