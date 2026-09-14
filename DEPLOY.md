@@ -1084,28 +1084,43 @@ in a container you otherwise can't reach:
 docker compose run --rm --no-deps --entrypoint sh web
 ```
 
-### 4e. Check Cloudflare isn't rewriting your HTML
+### 4e. Cloudflare settings — do this once, outside the build
+
+Nothing here is part of building or deploying an image. It is two toggles in
+the Cloudflare dashboard plus one check, done once, any time after the site is
+answering on the subdomain. Re-check it if the site ever behaves differently in
+production than it does locally.
+
+#### Turn these off
 
 Two Cloudflare features modify the HTML your origin sends, *after* React has
 rendered it. React then hydrates against markup that doesn't match what it
 produced, and you get a hydration error — which in a React app can degrade
 anything from one component to the whole page's interactivity.
 
+| Feature | Where | Why |
+| --- | --- | --- |
+| **Email Address Obfuscation** | Scrape Shield | Rewrites every `mailto:` into a span with `data-cfemail`. The footer has one, so this hits every page. |
+| **Rocket Loader** | Speed → Optimization | Defers and rewrites script execution. Reliably breaks React apps. |
+
+Neither does much for a site like this, and both trade a real bug for a
+marginal benefit.
+
+#### Then check it took
+
 ```bash
 curl -s https://new.akaralabs.in/ | grep -o '/cdn-cgi/[a-z/._-]*' | sort -u
 ```
 
-Anything returned here is Cloudflare injecting into your markup:
+A clean run prints **nothing at all**. Anything it does print is Cloudflare
+injecting into your markup: `/cdn-cgi/l/email-protection` is Email Obfuscation,
+`rocket-loader.min.js` is Rocket Loader, and `/cdn-cgi/scripts/…/invisible.js`
+is Bot Fight Mode's injection (Security → Bots).
 
-| What you see | Feature | Turn it off at |
-| --- | --- | --- |
-| `/cdn-cgi/l/email-protection` | **Email Address Obfuscation** — rewrites every `mailto:` into a span with `data-cfemail`. The footer has one on every page. | Scrape Shield → Email Address Obfuscation |
-| `rocket-loader.min.js` | **Rocket Loader** — defers and rewrites script execution. Reliably breaks React apps. | Speed → Optimization → Rocket Loader |
-| `/cdn-cgi/scripts/…/invisible.js` | Bot Fight Mode's JS injection | Security → Bots |
+After changing a Cloudflare setting, purge the cache before judging the result
+— otherwise you are looking at the response from before you changed it:
 
-Turn off Email Obfuscation and Rocket Loader. Neither does much for a site like
-this, and both trade a real bug for a marginal benefit. A clean run prints
-nothing at all.
+> Cloudflare → Caching → Configuration → **Purge Everything**
 
 ### 4f. Create your admin account
 
@@ -1175,28 +1190,95 @@ docker compose exec web ls -la /data/storage/requests
 ### Nothing private is cached
 
 This is the one that would be genuinely dangerous to get wrong — a cached
-dashboard means one customer's page served to another. Check the headers:
+dashboard means one customer's page served to another.
 
 ```bash
 for p in / /work/ /dashboard /admin /api/health; do
   echo "--- $p"
+  curl -sI "https://new.akaralabs.in$p" | head -1
   curl -sI "https://new.akaralabs.in$p" | grep -iE 'cf-cache-status|cache-control'
 done
+```
+
+Note the added `head -1`. Without the status line this check is easy to
+misread: **`curl -I` does not follow redirects, and `/dashboard` and `/admin`
+answer an unauthenticated request with a 307 to `/signin`.** So what you are
+looking at there is the redirect, not the page — and Next.js sends no
+`Cache-Control` on a redirect, which looks alarming and isn't:
+
+```
+--- /dashboard
+HTTP/2 307
+location: /signin?next=%2Fdashboard
+cf-cache-status: DYNAMIC
 ```
 
 What you want:
 
 | Path | Expect |
 | --- | --- |
-| `/`, `/work/` | `cf-cache-status: HIT` or `MISS`, a public `Cache-Control` |
-| `/_next/static/*`, `/assets/*` | `HIT`, `max-age=31536000, immutable` |
-| `/dashboard`, `/admin` | `cf-cache-status: DYNAMIC` or **absent**, and `Cache-Control: private, no-store` |
-| `/api/*` | same — never cached |
+| `/`, `/work/` | `DYNAMIC`. These pages read the session to render the nav, so Next marks them `private, no-store` and Cloudflare correctly declines to cache them. |
+| `/_next/static/*`, `/assets/*` | `HIT`, long `max-age` — these are content-hashed, so caching them hard is the point |
+| `/dashboard`, `/admin` | `DYNAMIC`, and a 307 when signed out |
+| `/api/*` | `DYNAMIC`, `no-store` |
 
-**If any private path shows `HIT`, stop and fix it before going further.** The
-usual cause is a Cloudflare "Cache Everything" page rule someone added. The
-Caddyfile also sets `no-store` on those paths as a second line of defence, so
-seeing a public `Cache-Control` there means something is overriding the origin.
+**`cf-cache-status: DYNAMIC` on every path is the result that matters.** It
+means Cloudflare cached none of it. `HIT` on a private path is the failure, and
+the usual cause is a "Cache Everything" rule someone added.
+
+#### Then check it signed in, because that is the case that counts
+
+The curl above is anonymous, so it never sees a dashboard at all. The response
+worth checking is the real one:
+
+1. Sign in, open the dashboard.
+2. DevTools → Network → click the `dashboard` document.
+3. Response headers: `cf-cache-status` must be `DYNAMIC` or `BYPASS`, and
+   `cache-control` must contain `no-store`.
+
+#### If `/dashboard` shows no `Cache-Control` at all
+
+The Caddyfile sets `no-store` on `/dashboard*`, `/admin*`, `/api/*`, `/track/*`,
+`/signin*` and `/signup*` as a second line of defence, and that applies to
+redirects too. If it is missing, your server's Caddyfile is older than the repo's:
+
+```bash
+grep -c '@private' ~/akaralabs/docker/Caddyfile   # 1 = current, 0 = stale
+```
+
+If it is 0, see the note below — this is a trap worth understanding.
+
+> **Rebuilding the image does not update `docker-compose.yml` or the Caddyfile.**
+> Those are read from `~/akaralabs/` on the server, not from inside the image,
+> and neither a manual `docker build` nor the CI deploy touches them. CI pulls a
+> new image and restarts `web` — that is all it does by design, because
+> rewriting compose files under a running stack is how you lose a volume.
+>
+> So after any change to `docker-compose.yml`, `docker/Caddyfile` or
+> `.env.example`, copy them across by hand. Note this clones fresh — the deploy
+> command deletes `/tmp/akara-src` on its last line, so it is never still there
+> when you want it:
+>
+> ```bash
+> # on the SERVER
+> rm -rf /tmp/akara-cfg
+> git clone --depth 1 https://github.com/SameepRohilla/akaralabs.git /tmp/akara-cfg
+>
+> cp /tmp/akara-cfg/docker-compose.yml ~/akaralabs/
+> cp /tmp/akara-cfg/docker/Caddyfile   ~/akaralabs/docker/
+> rm -rf /tmp/akara-cfg
+>
+> cd ~/akaralabs
+> docker compose config >/dev/null            # compose file still valid?
+> docker compose up -d                        # recreates only what changed
+> docker compose exec caddy caddy validate --config /etc/caddy/Caddyfile
+> ```
+>
+> `.env` is deliberately not in that list: it holds your secrets and is not in
+> the repo. If `.env.example` gained a variable, add it to `.env` by hand.
+>
+> Check the commit range when you pull: if it touched `docker/` or
+> `docker-compose.yml`, this step applies.
 
 ### Access control
 
@@ -1251,41 +1333,159 @@ Now that manual works, make it automatic.
 
 ### 6a. A dedicated deploy user and key
 
+Every command below is marked with **where to run it**. Two machines are
+involved and the steps alternate between them, which is the easiest thing to
+lose track of here.
+
+- **SERVER** — `ssh root@129.121.134.101`
+- **LAPTOP** — your own machine, the one with the git clone on it
+
+---
+
+#### Step 1 — make the user  ·  on the **SERVER**
+
 Don't give CI your own login. Make a user that can do exactly one job:
 
 ```bash
-# on the server
 sudo adduser --disabled-password --gecos "" deploy
 sudo usermod -aG docker deploy
-sudo mkdir -p /home/deploy/.ssh && sudo chmod 700 /home/deploy/.ssh
+
+# Create it as root, then hand it over. Doing the mkdir as `deploy` looks
+# tidier but breaks the moment the directory already exists owned by root —
+# from an earlier attempt, say — because `sudo -u deploy chmod` then fails with
+# "Operation not permitted". Setting the ownership explicitly works either way.
+sudo mkdir -p /home/deploy/.ssh
+sudo chown -R deploy:deploy /home/deploy
+sudo chmod 700 /home/deploy/.ssh
 ```
 
-Move the stack into its home so the deploy user owns what it touches:
+Check it landed right — SSH silently ignores a key directory with loose
+permissions, which is a miserable thing to debug later:
 
 ```bash
-sudo mv ~/akaralabs /home/deploy/ && sudo chown -R deploy:deploy /home/deploy/akaralabs
+sudo ls -ld /home/deploy /home/deploy/.ssh
+# drwxr-xr-x  … deploy deploy … /home/deploy
+# drwx------  … deploy deploy … /home/deploy/.ssh
 ```
 
-Then a key that exists only for this:
+#### Step 2 — move the stack into its home  ·  on the **SERVER**
+
+You are currently running as root, so the stack is at `/root/akaralabs`.
 
 ```bash
-# on your laptop
+sudo cp -r /root/akaralabs /home/deploy/akaralabs
+sudo chown -R deploy:deploy /home/deploy/akaralabs
+
+# prove it before deleting anything: the containers must still be listed,
+# with the same volumes
+sudo -u deploy sh -c 'cd ~/akaralabs && docker compose ps'
+```
+
+> **This is safe because `docker-compose.yml` pins `name: akaralabs`.** Compose
+> normally derives the project name from the directory it is in, so moving the
+> folder would look for volumes called `deploy_pgdata` instead of
+> `akaralabs_pgdata` — and your database would appear to have vanished. The
+> pinned name is what makes the move a non-event. Check it is there before you
+> start: `grep '^name:' ~/akaralabs/docker-compose.yml`.
+
+Once `docker compose ps` from the new location shows the running stack, stop the
+old one and remove it:
+
+```bash
+cd /root/akaralabs && docker compose down
+cd /home/deploy/akaralabs && sudo -u deploy docker compose up -d
+sudo rm -rf /root/akaralabs      # only after the above works
+```
+
+#### Step 3 — generate the key  ·  on your **LAPTOP**
+
+This is the step whose paths are confusing, so to be explicit: `~/.ssh/` is a
+directory in **your own home folder on your laptop**. It usually already exists;
+`ssh-keygen` creates it if not. This has nothing to do with the project folder,
+and nothing to do with the server.
+
+```bash
 ssh-keygen -t ed25519 -C 'github-actions-deploy' -f ~/.ssh/akara_deploy -N ''
-cat ~/.ssh/akara_deploy.pub    # paste into /home/deploy/.ssh/authorized_keys
-ssh -i ~/.ssh/akara_deploy deploy@server 'docker compose version'
 ```
 
-And close the obvious doors in `/etc/ssh/sshd_config`:
+That writes exactly two files:
+
+| File | What it is | Where it goes |
+| --- | --- | --- |
+| `~/.ssh/akara_deploy.pub` | public half | onto the **server** |
+| `~/.ssh/akara_deploy` | private half | into a **GitHub secret** |
+
+If `ssh-keygen` says the file already exists, you have one from a previous
+attempt — either reuse it or pick another name with `-f ~/.ssh/akara_deploy2`.
+
+#### Step 4 — install the public half  ·  from your **LAPTOP**
+
+One command, no copy-pasting of key material:
+
+```bash
+ssh-copy-id -i ~/.ssh/akara_deploy.pub deploy@129.121.134.101
+```
+
+That will ask for `deploy`'s password — which it does not have, because we
+created the account with `--disabled-password`. So either do it over your
+existing root session instead:
+
+```bash
+# on your LAPTOP, one line, using your working root login
+cat ~/.ssh/akara_deploy.pub | ssh root@129.121.134.101 \
+  'cat >> /home/deploy/.ssh/authorized_keys \
+   && chown deploy:deploy /home/deploy/.ssh/authorized_keys \
+   && chmod 600 /home/deploy/.ssh/authorized_keys'
+```
+
+#### Step 5 — prove it works  ·  from your **LAPTOP**
+
+Do not skip this. A key that doesn't work here will fail inside a CI run, where
+the error is far harder to read:
+
+```bash
+ssh -i ~/.ssh/akara_deploy deploy@129.121.134.101 'cd ~/akaralabs && docker compose ps'
+```
+
+You should see your containers, with no password prompt. If it asks for a
+password, the public half didn't land — re-run step 4.
+
+#### Step 6 — the value for the GitHub secret  ·  on your **LAPTOP**
+
+`DEPLOY_SSH_KEY` is the **private** half, whole file, including the first and
+last lines:
+
+```bash
+cat ~/.ssh/akara_deploy
+```
 
 ```
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAA…
+-----END OPENSSH PRIVATE KEY-----
+```
+
+Copy all of it, `BEGIN` and `END` lines included. A key pasted without them is
+the single most common reason the deploy job fails to authenticate.
+
+#### Step 7 — close the door  ·  on the **SERVER**
+
+You did most of this in Stage 2b. Now that `deploy` works by key, root no longer
+needs to be reachable at all:
+
+```bash
+sudo tee /etc/ssh/sshd_config.d/00-akara-hardening.conf >/dev/null <<'EOF'
 PasswordAuthentication no
-PermitRootLogin no
 KbdInteractiveAuthentication no
+PermitRootLogin no
+EOF
+sudo sshd -t && sudo systemctl reload ssh
+sudo sshd -T | grep -E '^(passwordauthentication|permitrootlogin)'
 ```
 
-`sudo systemctl reload ssh`. **Confirm you can still get in from a second
-terminal before you close the first one** — locking yourself out of a fresh VPS
-is a rite of passage best skipped.
+**Keep your current root session open** and confirm from a second terminal that
+`ssh -i ~/.ssh/akara_deploy deploy@…` still works before closing it. If you lose
+both, you are into Bluehost's console recovery.
 
 `DEPLOY_USER` is now `deploy` and `DEPLOY_PATH` is `/home/deploy/akaralabs`.
 

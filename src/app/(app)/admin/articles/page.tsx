@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import DangerAction from "@/components/DangerAction";
+import { deleteArticle } from "@/lib/actions/admin";
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -70,6 +72,7 @@ export default async function AdminArticlesPage() {
                   <th>Views</th>
                   <th>Published</th>
                   <th>Edited</th>
+                  <th aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
@@ -96,6 +99,9 @@ export default async function AdminArticlesPage() {
                       {a.publishedAt ? formatDate(a.publishedAt) : "—"}
                     </td>
                     <td style={{ fontSize: 13, color: "var(--ink-faint)" }}>{formatWhen(a.updatedAt)}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <DangerAction action={deleteArticle} id={a.id} title={a.title} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
