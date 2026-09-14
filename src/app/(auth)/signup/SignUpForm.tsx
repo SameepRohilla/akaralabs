@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import PasswordField from "@/components/PasswordField";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
@@ -107,14 +106,17 @@ export default function SignUpForm({
         </label>
       </div>
 
-      <PasswordField
-        name="password"
-        label="Password"
-        autoComplete="new-password"
-        required
-        minLength={8}
-        placeholder="At least 8 characters"
-      />
+      <label className="field">
+        <span className="lbl">Password</span>
+        <input
+          name="password"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={8}
+          placeholder="At least 8 characters"
+        />
+      </label>
 
       <label
         style={{

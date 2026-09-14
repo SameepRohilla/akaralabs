@@ -4,9 +4,8 @@ import { asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { printers, spools, printJobs, requests } from "@/db/schema";
 import AdminShell from "@/components/AdminShell";
-import { savePrinter, saveSpool, savePrintJob, deletePrinter, deleteSpool } from "@/lib/actions/admin";
+import { savePrinter, saveSpool, savePrintJob } from "@/lib/actions/admin";
 import ActionForm from "@/components/ActionForm";
-import DangerAction from "@/components/DangerAction";
 import { formatINR } from "@/lib/money";
 import { formatWhen } from "@/lib/dates";
 
@@ -232,62 +231,36 @@ export default async function WorkshopPage() {
             {machines.length ? (
               <div className="stack-sm" style={{ marginBottom: 16 }}>
                 {machines.map((m) => (
-                  <details key={m.id} className="filerow" style={{ display: "block", padding: "8px 10px" }}>
-                    <summary style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span className="fr-name" style={{ whiteSpace: "normal", flex: 1, minWidth: 140 }}>
-                        {m.name}
-                        <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-faint)" }}>
-                          {m.technology}
-                          {m.model ? ` · ${m.model}` : ""}
-                          {m.buildVolume ? ` · ${m.buildVolume}` : ""}
-                        </span>
+                  <ActionForm
+                    key={m.id}
+                    action={savePrinter}
+                    className="filerow"
+                    style={{ flexWrap: "wrap", gap: 8 }}
+                    submitLabel="Set"
+                    pendingLabel="…"
+                    inline
+                  >
+                    <input type="hidden" name="id" value={m.id} />
+                    <input type="hidden" name="name" value={m.name} />
+                    <input type="hidden" name="technology" value={m.technology} />
+                    {m.model ? <input type="hidden" name="model" value={m.model} /> : null}
+                    {m.buildVolume ? <input type="hidden" name="buildVolume" value={m.buildVolume} /> : null}
+
+                    <span className="fr-name" style={{ whiteSpace: "normal" }}>
+                      {m.name}
+                      <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-faint)" }}>
+                        {m.technology}
+                        {m.buildVolume ? ` · ${m.buildVolume}` : ""}
                       </span>
-                      <span className={PRINTER_PILL[m.status] ?? "pill"}>{m.status}</span>
-                    </summary>
-
-                    <div style={{ paddingTop: 12 }}>
-                      <ActionForm action={savePrinter} submitLabel="Save changes" successLabel="✓ Saved">
-                        <input type="hidden" name="id" value={m.id} />
-                        <label className="field">
-                          <span className="lbl">Name</span>
-                          <input name="name" defaultValue={m.name} required maxLength={80} />
-                        </label>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                          <label className="field">
-                            <span className="lbl">Technology</span>
-                            <select name="technology" defaultValue={m.technology}>
-                              <option value="FDM">FDM</option>
-                              <option value="SLA">SLA</option>
-                              <option value="SLS">SLS</option>
-                            </select>
-                          </label>
-                          <label className="field">
-                            <span className="lbl">Status</span>
-                            <select name="status" defaultValue={m.status}>
-                              <option value="idle">idle</option>
-                              <option value="busy">busy</option>
-                              <option value="maintenance">maintenance</option>
-                              <option value="offline">offline</option>
-                            </select>
-                          </label>
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                          <label className="field">
-                            <span className="lbl">Model</span>
-                            <input name="model" defaultValue={m.model ?? ""} maxLength={80} placeholder="Bambu Lab P1S" />
-                          </label>
-                          <label className="field">
-                            <span className="lbl">Build volume</span>
-                            <input name="buildVolume" defaultValue={m.buildVolume ?? ""} maxLength={60} placeholder="256×256×256" />
-                          </label>
-                        </div>
-                      </ActionForm>
-
-                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--rule)" }}>
-                        <DangerAction action={deletePrinter} id={m.id} title={m.name} label="Delete machine" />
-                      </div>
-                    </div>
-                  </details>
+                    </span>
+                    <span className={PRINTER_PILL[m.status] ?? "pill"}>{m.status}</span>
+                    <select name="status" defaultValue={m.status} className="inp" style={{ width: "auto", padding: "4px 7px", fontSize: 12 }}>
+                      <option value="idle">idle</option>
+                      <option value="busy">busy</option>
+                      <option value="maintenance">maintenance</option>
+                      <option value="offline">offline</option>
+                    </select>
+                  </ActionForm>
                 ))}
               </div>
             ) : null}
@@ -329,87 +302,39 @@ export default async function WorkshopPage() {
             </div>
 
             {filament.length ? (
-              <div className="stack-sm" style={{ marginBottom: 16 }}>
-                {filament.map((sp) => (
-                  <details key={sp.id} className="filerow" style={{ display: "block", padding: "8px 10px" }}>
-                    <summary style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      <span className="fr-name" style={{ whiteSpace: "normal", flex: 1, minWidth: 140 }}>
-                        {sp.material}
-                        {sp.colour ? ` · ${sp.colour}` : ""}
-                        <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-faint)" }}>
-                          {sp.brand || "—"}
-                          {sp.showPublicly ? "" : " · hidden"}
-                        </span>
-                      </span>
-                      <span
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: 13,
-                          color: sp.remainingGrams < 150 ? "#D98A80" : undefined,
-                        }}
-                      >
-                        {sp.remainingGrams} g
-                        <span style={{ fontSize: 10.5, color: "var(--ink-faint)" }}> / {sp.totalGrams}</span>
-                      </span>
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--ink-faint)" }}>
-                        {sp.costPaise ? formatINR(sp.costPaise) : "—"}
-                      </span>
-                    </summary>
-
-                    <div style={{ paddingTop: 12 }}>
-                      <ActionForm action={saveSpool} submitLabel="Save changes" successLabel="✓ Saved">
-                        <input type="hidden" name="id" value={sp.id} />
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                          <label className="field">
-                            <span className="lbl">Material</span>
-                            <input name="material" defaultValue={sp.material} required maxLength={40} />
-                          </label>
-                          <label className="field">
-                            <span className="lbl">Colour</span>
-                            <input name="colour" defaultValue={sp.colour ?? ""} maxLength={40} />
-                          </label>
-                        </div>
-                        <label className="field">
-                          <span className="lbl">Brand</span>
-                          <input name="brand" defaultValue={sp.brand ?? ""} maxLength={60} />
-                        </label>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-                          <label className="field">
-                            <span className="lbl">Spool holds (g)</span>
-                            <input name="totalGrams" type="number" min={1} max={20000} defaultValue={sp.totalGrams} required />
-                          </label>
-                          <label className="field">
-                            <span className="lbl">Left (g)</span>
-                            <input name="remainingGrams" type="number" min={0} max={20000} defaultValue={sp.remainingGrams} required />
-                          </label>
-                          <label className="field">
-                            <span className="lbl">Cost (₹)</span>
-                            <input
-                              name="costRupees"
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              defaultValue={sp.costPaise != null ? sp.costPaise / 100 : ""}
-                            />
-                          </label>
-                        </div>
-                        <label className="check">
-                          <input type="checkbox" name="showPublicly" defaultChecked={sp.showPublicly} />
-                          <span>Show on /materials and /estimate</span>
-                        </label>
-                      </ActionForm>
-
-                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--rule)" }}>
-                        <DangerAction
-                          action={deleteSpool}
-                          id={sp.id}
-                          title={`${sp.material}${sp.colour ? " · " + sp.colour : ""}`}
-                          label="Delete spool"
-                        />
-                      </div>
-                    </div>
-                  </details>
-                ))}
+              <div className="tbl-wrap" style={{ margin: "0 0 16px" }}>
+                <table className="tbl" style={{ minWidth: 0 }}>
+                  <thead>
+                    <tr>
+                      <th>Material</th>
+                      <th>Left</th>
+                      <th>Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filament.map((s) => (
+                      <tr key={s.id}>
+                        <td>
+                          {s.material}
+                          {s.colour ? ` · ${s.colour}` : ""}
+                          <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-faint)" }}>
+                            {s.brand || "—"}
+                            {s.showPublicly ? "" : " · hidden"}
+                          </span>
+                        </td>
+                        <td style={{ fontFamily: "var(--font-mono)", fontSize: 13, color: s.remainingGrams < 150 ? "#D98A80" : undefined }}>
+                          {s.remainingGrams} g
+                          <span style={{ display: "block", fontSize: 10.5, color: "var(--ink-faint)" }}>
+                            of {s.totalGrams}
+                          </span>
+                        </td>
+                        <td style={{ fontFamily: "var(--font-mono)", fontSize: 12.5 }}>
+                          {s.costPaise ? formatINR(s.costPaise) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ) : null}
 

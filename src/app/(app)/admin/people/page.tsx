@@ -90,7 +90,6 @@ export default async function PeoplePage({
               <thead>
                 <tr>
                   <th>Person</th>
-                  <th>User ID</th>
                   <th>Requests</th>
                   <th>Value</th>
                   <th>Joined</th>
@@ -113,23 +112,6 @@ export default async function PeoplePage({
                           {u.phone ? ` · ${u.phone}` : ""}
                         </span>
                       ) : null}
-                    </td>
-                    {/* Full id, selectable — it is what you paste into a query or
-                        quote when chasing something down, so truncating it would
-                        defeat the point of showing it. */}
-                    <td>
-                      <code
-                        style={{
-                          fontFamily: "var(--font-mono)",
-                          fontSize: 11,
-                          color: "var(--ink-faint)",
-                          userSelect: "all",
-                          wordBreak: "break-all",
-                        }}
-                        title="Click to select"
-                      >
-                        {u.id}
-                      </code>
                     </td>
                     <td style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>
                       {u.requestCount ? (
