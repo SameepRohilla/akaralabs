@@ -57,6 +57,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script src={asset("/assets/js/art.js")} strategy="afterInteractive" />
         <Script src={asset("/assets/js/i18n.js")} strategy="afterInteractive" />
         <Script src={asset("/assets/js/shared.js")} strategy="afterInteractive" />
+        {/* Page scripts register themselves on window.akaraPages; shared.js
+            calls the right one on every route change. Loaded here as real
+            files because an inline next/script never re-runs on a client-side
+            navigation. */}
+        <Script src={asset("/assets/js/legacy/work.js")} strategy="afterInteractive" />
+        <Script src={asset("/assets/js/legacy/faq.js")} strategy="afterInteractive" />
+        <Script src={asset("/assets/js/legacy/print.js")} strategy="afterInteractive" />
+        <Script src={asset("/assets/js/legacy/start.js")} strategy="afterInteractive" />
         <Script src={asset("/assets/js/analytics.js")} strategy="afterInteractive" />
       </body>
     </html>

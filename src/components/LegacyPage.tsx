@@ -30,6 +30,14 @@ export default async function LegacyPage({
     read(`${name}.js`),
   ]);
 
+  /* The page's JavaScript is NOT inlined here any more. next/script with
+     strategy="afterInteractive" runs an inline block on the initial document
+     load only — never on a client-side navigation — so arriving at this page by
+     following a link left its behaviour entirely unbound. It now lives in
+     public/assets/js/legacy/<name>.js, registers itself on window.akaraPages,
+     and shared.js calls it on every route change. */
+  const hasScript = js.length > 0;
+
   // The intake wizards call window.akaraSubmit; only those two pages need it,
   // so it isn't in the root layout.
   const needsFormHelper = name === "start" || name === "print";
@@ -37,15 +45,14 @@ export default async function LegacyPage({
   return (
     <>
       {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
-      <main className={mainClass || undefined} dangerouslySetInnerHTML={{ __html: html }} />
+      {/* data-legacy tells shared.js which page script to run after a
+          client-side navigation. */}
+      <main
+        className={mainClass || undefined}
+        data-legacy={hasScript ? name : undefined}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
       {needsFormHelper ? <Script src="/assets/js/forms.js" strategy="afterInteractive" /> : null}
-      {js ? (
-        <Script
-          id={`legacy-${name}`}
-          strategy="afterInteractive"
-          dangerouslySetInnerHTML={{ __html: js }}
-        />
-      ) : null}
     </>
   );
 }

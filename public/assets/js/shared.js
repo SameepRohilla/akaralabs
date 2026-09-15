@@ -509,6 +509,25 @@
     initPointerEffects();
     initParallax();
 
+    /* The blueprint drawings. art.js is idempotent and already exposes this —
+       it was simply never called again after the first document load, which is
+       why every project card came up as an empty grid after following a link
+       and filled in on refresh. */
+    if (window.akaraInjectArt) window.akaraInjectArt();
+
+    /* The page's own script, if it has one. These used to be inline
+       next/script blocks, which do not execute on a client-side navigation. */
+    var main = document.querySelector('[data-legacy]');
+    var page = main && main.getAttribute('data-legacy');
+    if (page && window.akaraPages && typeof window.akaraPages[page] === 'function') {
+      try {
+        window.akaraPages[page]();
+      } catch (e) {
+        // One page's script failing must not take the rest of the page with it.
+        console.error('[akara] page script "' + page + '" failed:', e);
+      }
+    }
+
     // Re-apply the translation pass to the markup that just arrived.
     if (window.akaraApplyLang) window.akaraApplyLang();
   }
