@@ -41,15 +41,28 @@
   document.head.appendChild(styleFix);
 
   // ---- Nav: scroll shadow + mobile toggle ----
-  var nav = document.querySelector('.nav');
-  if (nav) {
-    var onScroll = function () { nav.classList.toggle('scrolled', window.scrollY > 8); };
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-  }
-  var toggle = document.querySelector('.nav-toggle');
-  var links = document.querySelector('.nav-links');
-  if (toggle && links) {
+  //
+  // The nav is a React component. Moving between the marketing site and the
+  // signed-in dashboard swaps one layout for the other, so these elements are
+  // destroyed and rebuilt — and anything bound to the old ones is gone with
+  // them. Re-query on every call rather than closing over a snapshot.
+  var navScrollBound = false;
+  function initNav() {
+    var nav = document.querySelector('.nav');
+    if (nav) {
+      var onScroll = function () {
+        var n = document.querySelector('.nav');
+        if (n) n.classList.toggle('scrolled', window.scrollY > 8);
+      };
+      onScroll();
+      if (!navScrollBound) { navScrollBound = true; window.addEventListener('scroll', onScroll, { passive: true }); }
+    }
+
+    var toggle = document.querySelector('.nav-toggle');
+    var links = document.querySelector('.nav-links');
+    if (!toggle || !links || toggle.hasAttribute('data-ak-nav')) return;
+    toggle.setAttribute('data-ak-nav', '1');
+
     var startCta = document.querySelector('.nav-cta a.btn');
     if (startCta && !links.querySelector('.nav-mobile-cta')) {
       var m = document.createElement('a');
@@ -67,6 +80,7 @@
   // ---- Theme: dark "Ratri" ⇄ light "Haveli" ----
   // First visit follows the visitor's system preference; the nav
   // toggle overrides it and the choice persists in localStorage.
+  var mountThemeToggle = function () {};
   (function theme() {
     var KEY = 'akara-theme';
     var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
@@ -92,8 +106,15 @@
     if (mq && mq.addEventListener) {
       mq.addEventListener('change', function () { if (!stored()) apply(systemTheme(), true); });
     }
-    var cta = document.querySelector('.nav-cta');
-    if (cta) {
+    // The <html> data-theme attribute survives a route change; the button does
+    // not, because it is injected into the nav. So re-mounting it is all that
+    // is needed — and re-applying, so its label matches the current theme.
+    mountThemeToggle = function () {
+      var cta = document.querySelector('.nav-cta');
+      if (!cta || cta.querySelector('.theme-toggle')) {
+        apply(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark', false);
+        return;
+      }
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'theme-toggle';
@@ -106,7 +127,9 @@
         try { localStorage.setItem(KEY, next); } catch (e) {}
         apply(next, true);
       });
-    }
+      apply(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark', false);
+    };
+    mountThemeToggle();
   })();
 
   // ---- Floating WhatsApp button (every page) ----
@@ -138,82 +161,96 @@
   var PROFILE = PROFILES[0].p;
   var SPACING = 7;
 
-  var obj = document.getElementById('hero-object');
-  if (obj) {
-    var n = PROFILE.length;
-    var accent = n - 2;
-    var discs = [];
-    function setSize(el, d) {
-      el.style.width = d + 'px';
-      el.style.height = d + 'px';
-      el.style.marginLeft = (-d / 2) + 'px';
-      el.style.marginTop = (-d / 2) + 'px';
-    }
-    PROFILE.forEach(function (d, i) {
-      var disc = document.createElement('span');
-      disc.className = 'disc' + (i === accent ? ' disc-accent' : '');
-      setSize(disc, d);
-      disc.style.transform = 'translateZ(' + (i * SPACING) + 'px)';
-      disc.style.animationDelay = (140 + i * 55) + 'ms';
-      obj.appendChild(disc);
-      discs.push(disc);
-    });
-    obj.style.setProperty('--obj-h', (n * SPACING) + 'px');
+  // `obj` stays module-scoped because the reveal fallback below reaches for
+  // it. It is reassigned on every call so it points at the hero that is
+  // currently on the page, not the one from the first load.
+  var obj = null;
+  function initHero() {
+    obj = document.getElementById('hero-object');
+    if (obj && !obj.hasAttribute('data-ak-hero')) {
+      obj.setAttribute('data-ak-hero', '1');   // the animation loop must not be started twice
+    if (obj) {
+      var n = PROFILE.length;
+      var accent = n - 2;
+      var discs = [];
+      function setSize(el, d) {
+        el.style.width = d + 'px';
+        el.style.height = d + 'px';
+        el.style.marginLeft = (-d / 2) + 'px';
+        el.style.marginTop = (-d / 2) + 'px';
+      }
+      PROFILE.forEach(function (d, i) {
+        var disc = document.createElement('span');
+        disc.className = 'disc' + (i === accent ? ' disc-accent' : '');
+        setSize(disc, d);
+        disc.style.transform = 'translateZ(' + (i * SPACING) + 'px)';
+        disc.style.animationDelay = (140 + i * 55) + 'ms';
+        obj.appendChild(disc);
+        discs.push(disc);
+      });
+      obj.style.setProperty('--obj-h', (n * SPACING) + 'px');
 
-    // caption under the form
-    var art = obj.closest('.hero-art');
-    var cap = null;
-    if (art) {
-      cap = document.createElement('div');
-      cap.className = 'hero-form-cap';
-      cap.innerHTML = '<span class="dot"></span><span class="t">now forming — ' + PROFILES[0].name + '</span>';
-      art.appendChild(cap);
-    }
-
-    // morph cycle — pauses while the visitor hovers over the form
-    if (!REDUCED) {
-      var cur = 0, animating = false, hovered = false;
+      // caption under the form
+      var art = obj.closest('.hero-art');
+      var cap = null;
       if (art) {
-        art.addEventListener('pointerenter', function () { hovered = true; });
-        art.addEventListener('pointerleave', function () { hovered = false; });
+        cap = document.createElement('div');
+        cap.className = 'hero-form-cap';
+        cap.innerHTML = '<span class="dot"></span><span class="t">now forming — ' + PROFILES[0].name + '</span>';
+        art.appendChild(cap);
       }
-      function ease(p) { return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; }
-      function morphTo(idx) {
-        if (animating) return;
-        animating = true;
-        var from = PROFILES[cur].p, to = PROFILES[idx].p;
-        var DUR = 1100, t0 = null, swapped = false;
-        if (cap) cap.classList.add('fading');
-        function frame(t) {
-          if (!t0) t0 = t;
-          var p = Math.min((t - t0) / DUR, 1);
-          var e = ease(p);
-          for (var i = 0; i < n; i++) setSize(discs[i], from[i] + (to[i] - from[i]) * e);
-          if (!swapped && p >= 0.5 && cap) {
-            swapped = true;
-            cap.querySelector('.t').textContent = 'now forming — ' + PROFILES[idx].name;
-            cap.classList.remove('fading');
-          }
-          if (p < 1) requestAnimationFrame(frame);
-          else { cur = idx; animating = false; }
-        }
-        requestAnimationFrame(frame);
-      }
-      setInterval(function () {
-        if (document.hidden || hovered) return;
-        morphTo((cur + 1) % PROFILES.length);
-      }, 4200);
-    }
-  }
 
-  var elev = document.getElementById('hero-elevation');
-  if (elev) {
-    PROFILE.forEach(function (d, i) {
-      var bar = document.createElement('span');
-      bar.className = 'ebar';
-      bar.style.width = d + 'px';
-      elev.appendChild(bar);
-    });
+      // morph cycle — pauses while the visitor hovers over the form
+      if (!REDUCED) {
+        var cur = 0, animating = false, hovered = false;
+        if (art) {
+          art.addEventListener('pointerenter', function () { hovered = true; });
+          art.addEventListener('pointerleave', function () { hovered = false; });
+        }
+        function ease(p) { return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; }
+        function morphTo(idx) {
+          if (animating) return;
+          animating = true;
+          var from = PROFILES[cur].p, to = PROFILES[idx].p;
+          var DUR = 1100, t0 = null, swapped = false;
+          if (cap) cap.classList.add('fading');
+          function frame(t) {
+            if (!t0) t0 = t;
+            var p = Math.min((t - t0) / DUR, 1);
+            var e = ease(p);
+            for (var i = 0; i < n; i++) setSize(discs[i], from[i] + (to[i] - from[i]) * e);
+            if (!swapped && p >= 0.5 && cap) {
+              swapped = true;
+              cap.querySelector('.t').textContent = 'now forming — ' + PROFILES[idx].name;
+              cap.classList.remove('fading');
+            }
+            if (p < 1) requestAnimationFrame(frame);
+            else { cur = idx; animating = false; }
+          }
+          requestAnimationFrame(frame);
+        }
+        setInterval(function () {
+          if (document.hidden || hovered) return;
+          morphTo((cur + 1) % PROFILES.length);
+        }, 4200);
+      }
+    }
+
+    }
+
+    var elev = document.getElementById('hero-elevation');
+    if (elev && !elev.hasAttribute('data-ak-elev')) {
+      elev.setAttribute('data-ak-elev', '1');
+    if (elev) {
+      PROFILE.forEach(function (d, i) {
+        var bar = document.createElement('span');
+        bar.className = 'ebar';
+        bar.style.width = d + 'px';
+        elev.appendChild(bar);
+      });
+    }
+
+    }
   }
 
   // ---- Reveal on scroll (with robust fallbacks) ----
@@ -379,6 +416,7 @@
   }
 
   // ---- i18n: English ⇄ Hindi (site-wide, persists) ----
+  var mountLangSwitch = function () {};
   (function initI18N() {
     var DICT = window.AKARA_I18N || {};
     var SKIP = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEXTAREA: 1, OPTION: 0 };
@@ -414,8 +452,10 @@
         b.setAttribute('aria-pressed', b.getAttribute('data-lang') === lang ? 'true' : 'false');
       });
     }
-    var cta = document.querySelector('.nav-cta');
-    if (cta) {
+    // Injected into the nav, so it disappears with the nav on a route change.
+    mountLangSwitch = function () {
+      var cta = document.querySelector('.nav-cta');
+      if (!cta || cta.querySelector('.lang-switch')) return;
       var sw = document.createElement('div');
       sw.className = 'lang-switch';
       sw.setAttribute('role', 'group');
@@ -426,13 +466,19 @@
         var b = e.target.closest('[data-lang]');
         if (b) setLang(b.getAttribute('data-lang'));
       });
-    }
+    };
+    mountLangSwitch();
+
     var saved = 'en';
     try { saved = localStorage.getItem('akara-lang') || 'en'; } catch (e) {}
     setLang(saved);
     setTimeout(function () { if (document.documentElement.getAttribute('lang') === 'hi') toHi(); }, 400);
     window.akaraSetLang = setLang;
-    window.akaraApplyLang = function () { setLang(document.documentElement.getAttribute('lang') || 'en'); };
+    window.akaraApplyLang = function () {
+      var cur = 'en';
+      try { cur = localStorage.getItem('akara-lang') || 'en'; } catch (e) {}
+      setLang(cur);
+    };
   })();
 
   /* ---- Page-scoped effects, re-runnable after client-side navigation ----
@@ -447,11 +493,22 @@
    * that weren't there before.
    */
   function pageInit() {
+    // Layout-level: the nav is a React component, so moving between the
+    // marketing site and the dashboard destroys and rebuilds it — taking the
+    // theme toggle and language switch, which are injected into it, with it.
+    initNav();
+    mountThemeToggle();
+    mountLangSwitch();
+
+    // Page-level: everything inside <main>, which Next.js replaces on any
+    // client-side navigation.
+    initHero();
     initReveals();
     initCounters();
     initMarquee();
     initPointerEffects();
     initParallax();
+
     // Re-apply the translation pass to the markup that just arrived.
     if (window.akaraApplyLang) window.akaraApplyLang();
   }

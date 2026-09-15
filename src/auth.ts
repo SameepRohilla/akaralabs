@@ -88,9 +88,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const uid = (token.uid as string) || undefined;
       if (!uid) return token;
 
-      // Refresh role/verification on sign-in and on session update, not on
-      // every request — keeps the hot path free of a DB round trip.
-      if (user || trigger === "update" || token.role === undefined) {
+      /* Refresh role/verification on sign-in and on session update, not on
+         every request — keeps the hot path free of a DB round trip.
+
+         Plus: whenever the token says the address is UNVERIFIED. Confirming an
+         email happens by clicking a link in a mail client, which updates the
+         database and cannot touch the JWT the user is already carrying. Without
+         this, the token kept saying null, so "confirm your email" stayed on the
+         dashboard after they had confirmed it, until they happened to sign out
+         and back in.
+
+         The extra query costs nothing in practice: it only runs while an
+         account is unverified, which is a short window and, once Google sign-in
+         or a confirmed link has happened, never again. Verified users — almost
+         everyone, almost always — still take the fast path. */
+      const unverified = token.emailVerified == null;
+      if (user || trigger === "update" || token.role === undefined || unverified) {
         const [row] = await db.select().from(users).where(eq(users.id, uid)).limit(1);
         if (row) {
           token.role = row.role;

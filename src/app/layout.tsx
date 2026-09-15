@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import LegacyEffects from "@/components/LegacyEffects";
+import { asset } from "@/lib/asset";
 import { GOOGLE_FONTS, SITE, THEME_BOOTSTRAP } from "@/lib/site";
 import "./globals.css";
 
@@ -43,7 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* The design system is served verbatim from /public rather than
             imported, so the original static CSS stays byte-identical.
             eslint-disable-next-line @next/next/no-css-tags */}
-        <link rel="stylesheet" href="/assets/css/akara.css" />
+        <link rel="stylesheet" href={asset("/assets/css/akara.css")} />
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
       </head>
       <body>
@@ -52,11 +53,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             client-side navigation. Without it the new page renders invisible,
             because .reveal starts at opacity:0. */}
         <LegacyEffects />
-        <Script src="/assets/js/image-slot.js" strategy="afterInteractive" />
-        <Script src="/assets/js/art.js" strategy="afterInteractive" />
-        <Script src="/assets/js/i18n.js" strategy="afterInteractive" />
-        <Script src="/assets/js/shared.js" strategy="afterInteractive" />
-        <Script src="/assets/js/analytics.js" strategy="afterInteractive" />
+        <Script src={asset("/assets/js/image-slot.js")} strategy="afterInteractive" />
+        <Script src={asset("/assets/js/art.js")} strategy="afterInteractive" />
+        <Script src={asset("/assets/js/i18n.js")} strategy="afterInteractive" />
+        <Script src={asset("/assets/js/shared.js")} strategy="afterInteractive" />
+        <Script src={asset("/assets/js/analytics.js")} strategy="afterInteractive" />
       </body>
     </html>
   );

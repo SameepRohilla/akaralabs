@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import PasswordField from "@/components/PasswordField";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
@@ -43,17 +44,14 @@ export default function SignInForm({ next }: { next: string }) {
         <input name="email" type="email" autoComplete="email" required placeholder="you@company.in" />
       </label>
 
-      <label className="field">
-        <span className="lbl">Password</span>
-        <input
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          minLength={8}
-          placeholder="••••••••"
-        />
-      </label>
+      <PasswordField
+        name="password"
+        label="Password"
+        autoComplete="current-password"
+        required
+        minLength={8}
+        placeholder="••••••••"
+      />
 
       <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
         {busy ? "Signing in…" : "Sign in"}
