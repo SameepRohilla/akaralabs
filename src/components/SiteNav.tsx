@@ -22,6 +22,14 @@ export default async function SiteNav({ activeHash }: { activeHash?: string }) {
         <div className="nav-links">
           <Link href="/work/">Work</Link>
           <Link href={activeHash === "services" ? "#services" : "/#services"}>Services</Link>
+          {/* A link, not a second button. The 3D-print service needs to be
+              visible on every page — someone who already has a file should not
+              have to find the services band to discover we quote it — but the
+              nav CTA slot holds one primary action, and a second filled button
+              beside "Start a project" would leave two primaries competing and
+              crowd the mobile bar, which already carries the theme toggle, the
+              language switch and the hamburger. */}
+          <Link href="/print/">3D print</Link>
           <Link href="/materials/">Materials</Link>
           <Link href="/articles/">Journal</Link>
           <Link href="/about/">About</Link>

@@ -93,8 +93,177 @@ window.AKARA_FORM = {
       ' or email <a href="mailto:' + CFG.email + '" style="color:var(--terra-deep);border-bottom:1px solid var(--line-2)">' + CFG.email + '</a> — sorry about that.';
   };
 
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function rejectedHTML(data) {
+    if (!data.filesRejected || !data.filesRejected.length) return "";
+    return '<p style="margin-top:14px;font-size:13.5px;color:#D98A80">' +
+      "We couldn't accept: " + esc(data.filesRejected.join(", ")) +
+      ". Send those on WhatsApp and we'll attach them.</p>";
+  }
+
+  /* What the success screen offers once the address is settled: the tracking
+     link for a guest, the dashboard for a member. */
+  function doneHTML(data, email) {
+    var html = "";
+    if (data.trackingUrl && !data.hasAccount) {
+      html += '<a class="btn btn-primary" href="' + data.trackingUrl + '">Track this request <span class="arr">→</span></a>' +
+              '<a class="btn btn-ghost" href="/signup?email=' + encodeURIComponent(email) + '">Create an account</a>';
+    } else if (data.reference) {
+      html += '<a class="btn btn-primary" href="/dashboard/requests/' + esc(data.reference) + '">Open in your dashboard <span class="arr">→</span></a>';
+    }
+    return html;
+  }
+
+  /* The code step, for a guest whose address we haven't seen before.
+
+     Written by hand rather than reusing the React CodeField because this
+     screen is legacy markup rendered by the wizard scripts — there is no React
+     tree here to mount into. The behaviour is deliberately the same: one
+     input, auto-submit on the sixth digit, a resend on a visible countdown. */
+  function verifyHTML(data) {
+    return '' +
+      '<div class="ak-verify" style="max-width:420px">' +
+        '<p style="margin:0 0 4px;font-size:14.5px;line-height:1.6;color:var(--ink-soft)">' +
+          "We've sent a six-digit code to <strong>" + esc(data.email) + "</strong>. " +
+          "Enter it and we'll get started — until then we've held off on emailing you anything else." +
+        '</p>' +
+        '<div id="ak-verify-msg" role="alert" style="display:none;margin:10px 0 0;font-size:13.5px"></div>' +
+        '<div style="display:flex;gap:10px;align-items:center;margin:14px 0 0">' +
+          '<input id="ak-otp" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" ' +
+            'autocomplete="one-time-code" placeholder="••••••" aria-label="Six-digit code from the email" ' +
+            'style="flex:0 0 170px;font-size:22px;letter-spacing:.3em;text-align:center;padding:10px 12px">' +
+          '<button type="button" id="ak-otp-go" class="btn btn-primary">Confirm</button>' +
+        '</div>' +
+        '<button type="button" id="ak-otp-resend" class="btn btn-ghost btn-sm" style="margin-top:12px">Resend in 60s</button>' +
+      '</div>' +
+      rejectedHTML(data);
+  }
+
+  function mountVerify(host, data, email) {
+    host.innerHTML = verifyHTML(data);
+
+    var input = host.querySelector("#ak-otp");
+    var go = host.querySelector("#ak-otp-go");
+    var resend = host.querySelector("#ak-otp-resend");
+    var msg = host.querySelector("#ak-verify-msg");
+    var busy = false;
+
+    function say(text, bad) {
+      msg.textContent = text || "";
+      msg.style.display = text ? "block" : "none";
+      msg.style.color = bad ? "#D98A80" : "var(--ink-soft)";
+    }
+
+    function countdown(seconds) {
+      var left = seconds;
+      resend.disabled = true;
+      resend.textContent = "Resend in " + left + "s";
+      var t = setInterval(function () {
+        left -= 1;
+        if (left <= 0) {
+          clearInterval(t);
+          resend.disabled = false;
+          resend.textContent = "Send a new code";
+        } else {
+          resend.textContent = "Resend in " + left + "s";
+        }
+      }, 1000);
+    }
+
+    function submit() {
+      var code = (input.value || "").replace(/\D/g, "");
+      if (busy || code.length !== 6) return;
+      busy = true;
+      go.disabled = true;
+      go.textContent = "Checking…";
+      say("");
+
+      fetch("/api/intake/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ email: email, code: code }),
+        credentials: "same-origin"
+      })
+        .then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (body) {
+            return { ok: r.ok, body: body };
+          });
+        })
+        .then(function (res) {
+          busy = false;
+          go.disabled = false;
+          go.textContent = "Confirm";
+          if (!res.ok) {
+            say((res.body && res.body.error) || "That code didn't work.", true);
+            input.select();
+            return;
+          }
+          /* Confirmed. Swap the code box for the same actions a verified
+             submit would have shown in the first place. */
+          host.innerHTML =
+            '<p style="margin:0 0 14px;font-size:14.5px;color:var(--ink-soft)">' +
+              "Email confirmed — we're on it. A copy is in your inbox." +
+            "</p>" +
+            doneHTML({ trackingUrl: res.body.trackingUrl, reference: res.body.reference, hasAccount: false }, email) +
+            rejectedHTML(data);
+        })
+        .catch(function () {
+          busy = false;
+          go.disabled = false;
+          go.textContent = "Confirm";
+          say("We couldn't reach the server. Try again in a moment.", true);
+        });
+    }
+
+    input.addEventListener("input", function () {
+      var digits = (input.value || "").replace(/\D/g, "").slice(0, 6);
+      if (input.value !== digits) input.value = digits;
+      if (digits.length === 6) submit();
+    });
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); submit(); }
+    });
+    go.addEventListener("click", submit);
+
+    resend.addEventListener("click", function () {
+      if (resend.disabled) return;
+      resend.disabled = true;
+      fetch("/api/intake/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ email: email }),
+        credentials: "same-origin"
+      })
+        .then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (body) {
+            return { ok: r.ok, body: body };
+          });
+        })
+        .then(function (res) {
+          if (!res.ok) {
+            say((res.body && res.body.error) || "We couldn't send another code.", true);
+            resend.disabled = false;
+            return;
+          }
+          say("A new code is on its way.");
+          countdown((res.body && res.body.resendAfter) || 60);
+        })
+        .catch(function () {
+          say("We couldn't reach the server. Try again in a moment.", true);
+          resend.disabled = false;
+        });
+    });
+
+    countdown(data.resendAfter || 60);
+    try { input.focus(); } catch (e) { /* fine */ }
+  }
+
   /* Called by the wizards after a successful submit so the success screen can
-     offer the tracking link and an account. Safe to ignore. */
+     either ask for the emailed code or offer the tracking link. Safe to ignore. */
   window.akaraAfterSubmit = function (data) {
     if (!data) return;
     var host = document.getElementById("post-submit-actions");
@@ -103,21 +272,14 @@ window.AKARA_FORM = {
     var email = "";
     try {
       var input = document.querySelector('input[name="email"]');
-      email = input ? encodeURIComponent(input.value.trim()) : "";
+      email = input ? input.value.trim() : "";
     } catch (e) { /* fine */ }
 
-    var html = '';
-    if (data.trackingUrl && !data.hasAccount) {
-      html += '<a class="btn btn-primary" href="' + data.trackingUrl + '">Track this request <span class="arr">→</span></a>' +
-              '<a class="btn btn-ghost" href="/signup?email=' + email + '">Create an account</a>';
-    } else if (data.reference) {
-      html += '<a class="btn btn-primary" href="/dashboard/requests/' + data.reference + '">Open in your dashboard <span class="arr">→</span></a>';
+    if (data.verification === "required") {
+      mountVerify(host, data, data.email || email);
+      return;
     }
-    if (data.filesRejected && data.filesRejected.length) {
-      html += '<p style="margin-top:14px;font-size:13.5px;color:#D98A80">' +
-              'We couldn\'t accept: ' + data.filesRejected.join(", ") +
-              '. Send those on WhatsApp and we\'ll attach them.</p>';
-    }
-    host.innerHTML = html;
+
+    host.innerHTML = doneHTML(data, email) + rejectedHTML(data);
   };
 })();

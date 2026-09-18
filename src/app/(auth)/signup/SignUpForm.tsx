@@ -2,9 +2,21 @@
 
 import { useState } from "react";
 import PasswordField from "@/components/PasswordField";
+import CodeField from "@/components/CodeField";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
+/* Signup in two steps: collect, then confirm.
+ *
+ * Nothing is created by step one — the server holds the details against a code
+ * and waits. So "back to the details" is genuinely free, and abandoning the
+ * form halfway leaves no half-account behind for someone to later fail to sign
+ * into.
+ *
+ * The password is kept in component state across the two steps for one reason:
+ * to sign them in automatically once the account exists, exactly as the
+ * one-step version did. It never leaves the tab except in the step-one request.
+ */
 export default function SignUpForm({
   next,
   presetEmail,
@@ -15,11 +27,15 @@ export default function SignUpForm({
   referral?: string;
 }) {
   const router = useRouter();
+  const [step, setStep] = useState<"details" | "code">("details");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [claimed, setClaimed] = useState<number | null>(null);
+  const [pending, setPending] = useState<{ email: string; password: string } | null>(null);
+  const [resendAfter, setResendAfter] = useState(60);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function onDetails(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
     setError(null);
@@ -42,10 +58,39 @@ export default function SignUpForm({
       }),
     });
 
-    const body = (await res.json().catch(() => ({}))) as { error?: string; claimedRequests?: number };
+    const body = (await res.json().catch(() => ({}))) as { error?: string; resendAfter?: number };
 
     if (!res.ok) {
-      setError(body.error || "We couldn't create that account.");
+      setError(body.error || "We couldn't start that signup.");
+      setBusy(false);
+      return;
+    }
+
+    setPending({ email, password });
+    setResendAfter(body.resendAfter ?? 60);
+    setStep("code");
+    setBusy(false);
+  }
+
+  async function onCode(code: string) {
+    if (!pending) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+
+    const res = await fetch("/api/account/register/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: pending.email, code }),
+    });
+
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      claimedRequests?: number;
+    };
+
+    if (!res.ok) {
+      setError(body.error || "We couldn't confirm that code.");
       setBusy(false);
       return;
     }
@@ -53,7 +98,11 @@ export default function SignUpForm({
     if (body.claimedRequests) setClaimed(body.claimedRequests);
 
     // Straight into the portal — no second password prompt.
-    const signInRes = await signIn("credentials", { email, password, redirect: false });
+    const signInRes = await signIn("credentials", {
+      email: pending.email,
+      password: pending.password,
+      redirect: false,
+    });
     if (signInRes?.error) {
       router.push("/signin?registered=1");
       return;
@@ -62,17 +111,60 @@ export default function SignUpForm({
     router.refresh();
   }
 
+  async function onResend() {
+    if (!pending) return;
+    setError(null);
+    setNotice(null);
+    const res = await fetch("/api/account/register/resend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: pending.email }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) setError(body.error || "We couldn't send another code.");
+    else setNotice("A new code is on its way.");
+  }
+
+  if (step === "code" && pending) {
+    return (
+      <>
+        {claimed ? (
+          <div className="notice notice-ok" style={{ marginBottom: 16 }}>
+            Found {claimed} earlier {claimed === 1 ? "request" : "requests"} on this email — added
+            to your dashboard.
+          </div>
+        ) : null}
+        <CodeField
+          email={pending.email}
+          onSubmit={onCode}
+          onResend={onResend}
+          resendAfter={resendAfter}
+          busy={busy}
+          error={error}
+          notice={notice}
+          submitLabel="Create my account"
+        >
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              setStep("details");
+              setError(null);
+              setNotice(null);
+            }}
+          >
+            Wrong email?
+          </button>
+        </CodeField>
+      </>
+    );
+  }
+
   return (
-    <form onSubmit={onSubmit} noValidate>
+    <form onSubmit={onDetails} noValidate>
       {error ? (
         <div className="notice notice-err" style={{ marginBottom: 16 }}>
           {error}
-        </div>
-      ) : null}
-      {claimed ? (
-        <div className="notice notice-ok" style={{ marginBottom: 16 }}>
-          Found {claimed} earlier {claimed === 1 ? "request" : "requests"} on this email — added to
-          your dashboard.
         </div>
       ) : null}
 
@@ -88,11 +180,12 @@ export default function SignUpForm({
           type="email"
           autoComplete="email"
           required
-          defaultValue={presetEmail}
+          defaultValue={pending?.email ?? presetEmail}
           placeholder="you@company.in"
         />
         <span className="hint">
-          Use the same email you submitted enquiries with and we&apos;ll pull them in automatically.
+          We&apos;ll send a code here to confirm it. Use the same email you submitted enquiries with
+          and we&apos;ll pull them in automatically.
         </span>
       </label>
 
@@ -132,7 +225,7 @@ export default function SignUpForm({
       </label>
 
       <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center" }} disabled={busy}>
-        {busy ? "Creating…" : "Create account"}
+        {busy ? "Sending a code…" : "Continue"}
       </button>
     </form>
   );

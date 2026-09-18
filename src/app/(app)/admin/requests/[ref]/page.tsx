@@ -175,6 +175,22 @@ export default async function AdminRequestPage({ params }: { params: Promise<{ r
                 <a href={`mailto:${request.contactEmail}`} style={{ color: "var(--terra-deep)" }}>
                   {request.contactEmail}
                 </a>
+                {/* Stated on the record, both ways. "Confirmed" is the signal
+                    that this address accepted a code; its absence is the
+                    reason the customer never got a receipt and you were never
+                    pinged — worth knowing before picking up the phone. */}
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: 3,
+                    fontSize: 11.5,
+                    color: request.emailVerifiedAt ? "#7FC79B" : "var(--terra-deep)",
+                  }}
+                >
+                  {request.emailVerifiedAt
+                    ? `✓ confirmed ${formatDate(request.emailVerifiedAt)}`
+                    : "not confirmed — no code entered, so no mail has gone out"}
+                </span>
               </dd>
               {request.contactPhone ? (
                 <>

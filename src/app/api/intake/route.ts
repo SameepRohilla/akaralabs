@@ -7,10 +7,11 @@ import { limit, clientIp } from "@/lib/ratelimit";
 import { makeReference, makeTrackingToken } from "@/lib/ids";
 import { auth } from "@/auth";
 import * as storage from "@/lib/storage";
-import { sendMail, shell, kvBlock, esc } from "@/lib/mail";
 import { SITE } from "@/lib/site";
-import { notifyStudio } from "@/lib/notify";
 import { parseStl } from "@/lib/stl";
+import { sendIntakeEmails } from "@/lib/intake-notify";
+import { issueOtp, OTP_RESEND_COOLDOWN_SECONDS } from "@/lib/otp";
+import { sendOtpMail } from "@/lib/otp-mail";
 
 /* Public endpoint behind the /start and /print wizards. Replaces the
    Web3Forms hop: the enquiry becomes a tracked row, the files land on our
@@ -91,6 +92,18 @@ export const POST = handler(async (req: Request) => {
   const session = await auth();
   let userId = session?.user?.id ?? null;
 
+  /* Signed in AND submitting under their own address: the account already
+     proves this inbox, so there is nothing to confirm.
+
+     The address check is not pedantry. The form lets a signed-in user type any
+     email — quite reasonably, when they're briefing on behalf of a colleague —
+     and a session proves the *account's* address, not whichever one they
+     happened to type. Without this comparison, being signed in would be a way
+     to make us email anyone. */
+  const preVerified =
+    !!session?.user?.id &&
+    (session.user.email || "").toLowerCase() === contactEmail.toLowerCase();
+
   // Not signed in? If this email already has an account, attach it anyway so
   // the request shows up next time they log in.
   if (!userId) {
@@ -134,6 +147,7 @@ export const POST = handler(async (req: Request) => {
       contactEmail: contactEmail.toLowerCase(),
       contactPhone: pick(payload.fields, CONTACT_KEYS.phone) ?? null,
       contactCompany: pick(payload.fields, CONTACT_KEYS.company) ?? null,
+      emailVerifiedAt: preVerified ? new Date() : null,
       title,
       brief: payload.fields["Brief"] || payload.fields["Description"] || null,
       quantity: payload.fields["Quantity"] || null,
@@ -214,66 +228,58 @@ export const POST = handler(async (req: Request) => {
     });
   }
 
-  /* ---- Email both sides ------------------------------------------------ */
+  /* ---- Email, or ask them to prove the address first -------------------- */
 
   const trackHref = `${SITE.url}/track/${reference}?t=${trackingToken}`;
-  const specRows: [string, string][] = Object.entries(payload.fields)
-    .filter(([k, v]) => !k.startsWith("_") && k !== "Reference" && v && v !== "—")
-    .slice(0, 18)
-    .map(([k, v]) => [k, esc(v)]);
 
-  await sendMail({
-    to: contactEmail,
-    subject: `We've got it — ${reference}`,
-    html: shell({
-      heading: isPrint ? "On the queue." : "It's on our bench.",
-      body:
-        `<p>Hello ${esc(contactName.split(" ")[0])},</p>` +
-        `<p>${
-          isPrint
-            ? "Your print request is in. We'll check the model, confirm material and finish, and send you a price."
-            : "Thanks for the brief — a real person is reading it. We usually come back within 12 working hours with a quote or a couple of questions."
-        }</p>` +
-        kvBlock([
-          ["Reference", esc(reference)],
-          ...specRows.slice(0, 8),
-          ...(stored.length ? ([["Files", stored.map((f) => esc(f.name)).join("<br>")]] as [string, string][]) : []),
-        ]) +
-        (rejected.length
-          ? `<p style="color:#E8B0A8;">We couldn't accept: ${esc(rejected.join(", "))}. Send those over WhatsApp and we'll add them.</p>`
-          : "") +
-        (userId
-          ? `<p>Follow it in your dashboard any time.</p>`
-          : `<p>Track it with the link below — no account needed. Create one and every request lands in a single dashboard.</p>`),
-      cta: { label: "Track this request", href: userId ? `${SITE.url}/dashboard/requests/${reference}` : trackHref },
-      footNote: `Reply to this email or message ${SITE.email} and it lands on the same thread.`,
-    }),
+  if (preVerified) {
+    /* Signed in, so the address was proven when they made the account. Nothing
+       to confirm; both emails go straight out. */
+    await sendIntakeEmails(row.id, { rejected });
+
+    return Response.json({
+      ok: true,
+      reference,
+      trackingUrl: trackHref,
+      filesStored: stored.length,
+      filesRejected: rejected,
+      hasAccount: !!userId,
+      verification: "not_required",
+    });
+  }
+
+  /* A guest. The request is already saved — losing a real enquiry because
+     someone closed the tab before checking their email would be far worse than
+     carrying an unconfirmed row — but nothing else happens yet.
+
+     Specifically: no receipt, no studio ping, and the tracking link is withheld
+     from the response. Anyone can type a stranger's address into a public form;
+     until a code comes back, sending that stranger mail (or paging the studio
+     about them) is something an attacker chose, not something the owner of the
+     inbox did. */
+  const { code, expiresAt } = await issueOtp({
+    email: contactEmail.toLowerCase(),
+    purpose: "intake",
+    requestId: row.id,
   });
 
-  await notifyStudio(
-    `${isPrint ? "Print" : "Project"} enquiry — ${contactName} (${reference})`,
-    shell({
-      heading: `${reference} · ${isPrint ? "3D print" : "Project"}`,
-      body:
-        kvBlock([
-          ["Name", esc(contactName)],
-          ["Email", esc(contactEmail)],
-          ["Phone", esc(pick(payload.fields, CONTACT_KEYS.phone) || "—")],
-          ["Account", userId ? "existing customer" : "new / guest"],
-          ...specRows,
-          ["Files", stored.length ? stored.map((f) => `${esc(f.name)} (${storage.humanSize(f.size)})`).join("<br>") : "none"],
-        ]) + (rejected.length ? `<p>Rejected: ${esc(rejected.join(", "))}</p>` : ""),
-      cta: { label: "Open in admin", href: `${SITE.url}/admin/requests/${reference}` },
-    }),
-  );
+  await sendOtpMail({
+    to: contactEmail,
+    purpose: "intake",
+    code,
+    name: contactName,
+  });
 
   return Response.json({
     ok: true,
     reference,
-    trackingUrl: trackHref,
     filesStored: stored.length,
     filesRejected: rejected,
     hasAccount: !!userId,
+    verification: "required",
+    email: contactEmail,
+    expiresAt: expiresAt.toISOString(),
+    resendAfter: OTP_RESEND_COOLDOWN_SECONDS,
   });
 });
 

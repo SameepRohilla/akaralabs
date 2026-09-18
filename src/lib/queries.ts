@@ -403,6 +403,7 @@ export async function adminQueue(opts: { stage?: RequestStage | "open" | "all"; 
       createdAt: requests.createdAt,
       updatedAt: requests.updatedAt,
       userId: requests.userId,
+      emailVerifiedAt: requests.emailVerifiedAt,
       assigneeName: users.name,
     })
     .from(requests)

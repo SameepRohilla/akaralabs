@@ -516,15 +516,36 @@
     if (window.akaraInjectArt) window.akaraInjectArt();
 
     /* The page's own script, if it has one. These used to be inline
-       next/script blocks, which do not execute on a client-side navigation. */
+       next/script blocks, which do not execute on a client-side navigation.
+
+       Run at most once per <main>. The effects above are all idempotent — they
+       stamp what they have touched and skip it next time — but a page script
+       is a black box that typically ends in addEventListener, and running it
+       twice against the same markup binds the same handler twice.
+
+       That happens on every first load: shared.js calls pageInit itself, and
+       LegacyEffects calls it again when it mounts. On /print/ the result was
+       two click handlers on the submit button, so one click sent the form
+       twice and the studio got two copies of every enquiry. Disabling the
+       button inside the handler does not help — both listeners are already
+       queued by the time the first one runs.
+
+       Keyed on the element, not the path: React gives each route its own
+       <main>, so a genuine navigation always presents a node we have not
+       stamped, while a second call for the same view presents the same one. */
     var main = document.querySelector('[data-legacy]');
     var page = main && main.getAttribute('data-legacy');
     if (page && window.akaraPages && typeof window.akaraPages[page] === 'function') {
-      try {
-        window.akaraPages[page]();
-      } catch (e) {
-        // One page's script failing must not take the rest of the page with it.
-        console.error('[akara] page script "' + page + '" failed:', e);
+      if (main.__akaraPageRan === page) {
+        /* Already bound for this markup — nothing to do. */
+      } else {
+        main.__akaraPageRan = page;
+        try {
+          window.akaraPages[page]();
+        } catch (e) {
+          // One page's script failing must not take the rest of the page with it.
+          console.error('[akara] page script "' + page + '" failed:', e);
+        }
       }
     }
 

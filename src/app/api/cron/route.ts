@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { quotes, requests, authTokens } from "@/db/schema";
 import { handler, ApiError } from "@/lib/guard";
 import { pruneRateLimits } from "@/lib/ratelimit";
+import { pruneOtps } from "@/lib/otp";
 import { notifyStudio } from "@/lib/notify";
 import { shell, esc } from "@/lib/mail";
 import { SITE } from "@/lib/site";
@@ -37,6 +38,9 @@ export const POST = handler(async (req: Request) => {
     .returning({ id: authTokens.id });
 
   await pruneRateLimits();
+  /* Spent and long-dead email codes. Signup codes carry a pending account —
+     including its password hash — so this is the one that matters most. */
+  await pruneOtps();
 
   /* 2b. Disk. A box holding customer CAD fills up quietly, and "check it
      monthly" is far too slow — by the time you notice, uploads are already

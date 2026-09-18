@@ -197,6 +197,14 @@ export const requests = pgTable(
     contactPhone: text("contact_phone"),
     contactCompany: text("contact_company"),
 
+    /** When the submitter proved they own `contactEmail`, by entering the code
+        we sent. Null means the enquiry is real enough to keep but nobody has
+        confirmed the address, so we have not emailed them anything beyond the
+        code itself and the studio has not been pinged. Requests that arrive
+        from a signed-in session are verified on arrival — the account already
+        proved the address. */
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+
     title: text("title"),
     brief: text("brief"),
 
@@ -525,6 +533,58 @@ export const auditLog = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("audit_entity_idx").on(t.entity, t.entityId, t.createdAt)],
+);
+
+/** Short-lived numeric codes emailed to prove someone owns an address.
+ *
+ * Deliberately separate from `auth_tokens`. Those are 256-bit links that live
+ * for two days and only ever belong to an existing user; these are six digits
+ * that live for ten minutes, are guessable by design, and frequently exist
+ * *before* there is a user at all — a signup's details sit in `payload` until
+ * the code comes back, so an unconfirmed address never becomes an account.
+ *
+ * `codeHash` is a peppered SHA-256, never the code itself: a database dump
+ * should not hand anyone a working signup, and six digits would otherwise be
+ * trivially reversible from a plain hash.
+ */
+export const emailOtps = pgTable(
+  "email_otps",
+  {
+    id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+
+    /** Always stored lowercased — it is half the lookup key. */
+    email: text("email").notNull(),
+
+    /** 'signup' | 'intake' | 'verify_account' */
+    purpose: text("purpose").notNull(),
+
+    codeHash: text("code_hash").notNull(),
+
+    /** What this code unlocks. For 'signup', the whole pending account —
+        including the bcrypt hash, so no plaintext password is ever stored. */
+    payload: jsonb("payload").$type<Record<string, unknown>>(),
+
+    /** Set for 'intake' (the request awaiting confirmation) and
+        'verify_account' (the signed-in user), null for 'signup'. */
+    requestId: text("request_id").references(() => requests.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+
+    /** Wrong guesses so far. Past the cap the row is dead and must be resent. */
+    attempts: integer("attempts").notNull().default(0),
+    /** How many codes this row has carried, across resends. */
+    sends: integer("sends").notNull().default(1),
+
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }).notNull().defaultNow(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    /* The hot lookup: the one live code for this address and purpose. */
+    index("email_otps_lookup_idx").on(sql`lower(${t.email})`, t.purpose, t.consumedAt),
+    index("email_otps_request_idx").on(t.requestId),
+    index("email_otps_expiry_idx").on(t.expiresAt),
+  ],
 );
 
 /** Simple sliding-window limiter backing store — survives restarts, no Redis needed. */

@@ -1657,6 +1657,20 @@ at `akaralabs.in` and not the subdomain.
 
 ## Stage 8 — After launch
 
+### Releases from here on
+
+This document ends once the server is built and serving. Everything after that —
+what each release changes, which ones carry a migration, and which ones need
+something done by hand before or after the deploy — lives in **`MIGRATIONS.md`**,
+newest first.
+
+Read it before deploying a release that touches the database. Most do not; the
+ones that do are the ones where "just push and watch the workflow" is not the
+whole procedure.
+
+Moving the whole thing to different hardware is a separate procedure again —
+**Appendix F**. It is not something to work out on the night.
+
 ### Daily housekeeping
 
 ```bash
@@ -1976,3 +1990,295 @@ and critical in *runtime* dependencies:
 ```
 
 Be aware that as written it will fail today, on the `nodemailer` advisory above.
+
+---
+
+## Appendix F — Moving to a new server
+
+Different hardware, same site. Bluehost to somebody else, a bigger box, a
+different region — the procedure is the same, and none of it is `docker compose
+up` on the new machine and hoping.
+
+The whole exercise is one question: **is there any moment where an enquiry can
+be accepted by a server you are about to throw away?** Everything below exists
+to make the answer no.
+
+Every command here was run end to end in a sandbox first: dump, restore,
+uploads copy, and the app served from the restored copy. The verification
+script is `scripts/verify-move.sh`.
+
+### What actually has to move
+
+| | Where it lives | How it moves |
+|---|---|---|
+| Database | `pgdata` volume | `pg_dump` → `psql` |
+| Customer uploads | `storage` volume | tarball, **copied last** |
+| Secrets | `.env` | copied verbatim — see the warning below |
+| Caddy certificates | `caddy_data` volume | do **not** copy; the new box gets its own |
+| Backups | `./backups` | copy if you want the history; not needed to run |
+
+The application itself does not move. The new server pulls the same image from
+GHCR that the old one is running.
+
+### AUTH_SECRET is not a fresh-install value
+
+Generating a new `AUTH_SECRET` on the new box is the single easiest way to turn
+a clean migration into a support morning. Copy `.env` across unchanged.
+
+Two things break, and neither announces itself:
+
+**Every signed-in customer is signed out.** Sessions are JWTs signed with that
+secret; a different secret means every cookie in every browser is a forgery.
+Verified: same session cookie, new secret, `/dashboard` → `/signin`.
+
+**Every email code in flight stops working — as "wrong", not "expired".** Since
+the OTP release, `code_hash` is an HMAC keyed on `AUTH_SECRET`. A customer who
+received a code sixty seconds before the cutover types it in and is told:
+
+```
+That code isn't right. 4 attempts left.
+```
+
+They will retype it, burn their attempts, and conclude the site is broken. The
+code is correct; the key that verifies it changed underneath them. Verified by
+issuing a code, restarting with a different secret, and posting the code.
+
+`POSTGRES_PASSWORD` is different — the new cluster is initialised from `.env`,
+so a new value there is fine as long as it is the value `.env` carries. Keeping
+it identical is still simpler.
+
+### Cloudflare makes the cutover easy and the certificate hard
+
+Because the domain is orange-clouded, visitors resolve to Cloudflare's IPs,
+which never change. Changing the origin A record takes effect at the edge in
+seconds — there is no DNS TTL tail to wait out, and no need to lower the TTL
+a day ahead the way you would on a grey-clouded record.
+
+The cost is the certificate. Caddy gets a Let's Encrypt cert over HTTP-01,
+which needs Let's Encrypt to reach **that specific box** on port 80. While
+`akaralabs.in` still points at the old server, the new one cannot prove it owns
+the name, so it cannot get a certificate for it — and you find this out at the
+moment you switch, which is the worst time.
+
+Two ways round it, pick one before you start:
+
+1. **Stage under a second hostname.** Point `new2.akaralabs.in` (grey cloud,
+   straight at the new IP), set `SITE_DOMAIN=new2.akaralabs.in`, let Caddy get
+   a cert, verify everything, then change `SITE_DOMAIN` back and let it get the
+   real cert during the cutover window. You did exactly this with
+   `new.akaralabs.in` for the original build.
+
+2. **Use a Cloudflare Origin CA certificate.** Free, fifteen years, no ACME
+   validation at all, so it works on a box the public internet has never
+   resolved. The Caddyfile already documents the four steps — the `tls` line is
+   sitting commented out. This is the better option if you expect to move
+   servers more than once.
+
+### The move
+
+Timings assume a small database and a few hundred MB of uploads. Give yourself
+an evening, not a lunch break, and do it when India is asleep.
+
+#### 1. Build the new server, days ahead
+
+Work through **Stages 2 and 4** on the new box. Everything except DNS. At the
+end you want the stack running, reachable under its staging hostname, with an
+empty database — proof that the machine, Docker, the image pull and Caddy all
+work before any data is involved.
+
+```bash
+# on the NEW server
+cd ~/akaralabs
+docker compose ps          # all Up, db healthy
+curl -fsS localhost/api/health
+```
+
+#### 2. Copy `.env` across, unchanged
+
+```bash
+# on your LAPTOP
+scp root@OLD_IP:akaralabs/.env /tmp/akara.env
+scp /tmp/akara.env root@NEW_IP:akaralabs/.env
+shred -u /tmp/akara.env
+```
+
+Change only `SITE_DOMAIN`, and only if you are staging under a second hostname.
+Leave `AUTH_SECRET` alone.
+
+#### 3. Close writes on the old server
+
+This is the step people skip, and it is the only one that actually prevents
+data loss. Everything from here until DNS moves is the window in which an
+enquiry could land on the old box.
+
+Shortest safe version — stop the app but leave the database up, so you can
+still dump it:
+
+```bash
+# on the OLD server
+cd ~/akaralabs
+docker compose stop web
+```
+
+Caddy now returns 502 for a few minutes. A visitor mid-form sees an error and
+retries; nothing is silently swallowed, which is the point. If you would rather
+show something civil, put a static maintenance page in front instead — but do
+not leave `/api/intake` answering.
+
+#### 4. Dump the database, then copy the uploads
+
+**Order matters.** Database first, uploads second. If you take the uploads
+first, a file uploaded in between exists as a row with nothing behind it — and
+nothing in the stack notices until a customer clicks their own STL and gets a
+404. With writes already stopped in step 3 this cannot happen, which is exactly
+why step 3 comes first.
+
+```bash
+# on the OLD server
+cd ~/akaralabs
+STAMP=$(date -u +%Y%m%d-%H%M)
+
+docker compose exec -T db pg_dump -U akara -d akara --no-owner \
+  | gzip > /root/move-db-$STAMP.sql.gz
+
+docker run --rm -v akaralabs_storage:/data:ro -v /root:/out alpine \
+  tar czf /out/move-storage-$STAMP.tar.gz -C /data .
+
+ls -lh /root/move-*
+```
+
+`--no-owner` matters: without it the dump carries role grants that may not
+exist on the new cluster, and the restore fills with errors.
+
+Then move both:
+
+```bash
+# on your LAPTOP — or rsync directly between the two if they can see each other
+scp root@OLD_IP:/root/move-*-$STAMP.* /tmp/
+scp /tmp/move-*-$STAMP.* root@NEW_IP:/root/
+```
+
+#### 5. Restore on the new server
+
+```bash
+# on the NEW server
+cd ~/akaralabs
+docker compose stop web        # nothing should be reading while we load
+
+gunzip -c /root/move-db-*.sql.gz \
+  | docker compose exec -T db psql -U akara -d akara -v ON_ERROR_STOP=1
+
+docker run --rm -v akaralabs_storage:/data -v /root:/in alpine \
+  tar xzf /in/move-storage-*.tar.gz -C /data
+
+docker compose up -d web
+```
+
+`ON_ERROR_STOP=1` is deliberate — a restore that scrolls errors past you and
+exits 0 is how a half-populated database reaches production.
+
+The database arrives already migrated, because the dump came from a migrated
+one. `ops/migrate.cjs` runs at startup, finds everything applied, and does
+nothing.
+
+#### 6. Verify before DNS
+
+```bash
+# on the NEW server
+./scripts/verify-move.sh
+```
+
+Row counts for every table, and — the one that matters — every `files.storage_key`
+resolved against the actual volume. Compare the counts against the same script
+run on the old server. A mismatch means stop.
+
+Then exercise the real hostname against the new IP, without sending anyone
+there, by overriding DNS on your own machine:
+
+```bash
+# on your LAPTOP: /etc/hosts  (C:\Windows\System32\drivers\etc\hosts)
+NEW_IP    akaralabs.in www.akaralabs.in
+```
+
+Testing by IP alone is not enough — Auth.js, cookies, redirects and canonical
+URLs are all hostname-sensitive, so an IP test passes while the real thing
+fails. With the override in place, do these five by hand:
+
+- [ ] sign in with an existing password
+- [ ] open an existing request in `/admin` and **download its attached file**
+- [ ] open a guest tracking link with its original `?t=` token
+- [ ] submit a print request and confirm the code arrives (proves SMTP works
+      from the new box — a new IP may be unknown to your relay)
+- [ ] `/api/health` returns 200
+
+Remove the hosts entry afterwards.
+
+#### 7. Cut over
+
+Cloudflare → DNS → the `A` record for `akaralabs.in` (and `www`) → new IP.
+Proxied, so it takes effect in seconds.
+
+```bash
+curl -sI https://akaralabs.in/ | grep -i 'cf-cache-status\|server'
+```
+
+Then watch the new server's logs for ten minutes:
+
+```bash
+docker compose logs -f --tail=50 web caddy
+```
+
+#### 8. Afterwards
+
+- Re-do **Stage 8**: the cron entry for `/api/cron` and the `rclone` backup sync
+  are on the old machine's crontab, not in the repo. A move with no cron means
+  no backups and no daily digest, silently.
+- Update `DEPLOY_HOST` in the GitHub repository secrets, and re-add the deploy
+  key — Stage 6. Until you do, pushes deploy to the old server.
+- If you locked the origin to Cloudflare ranges, run `scripts/lock-origin.sh`
+  on the new box.
+- Leave the old server **running and untouched** for a week. Not serving — its
+  DNS no longer points anywhere — just intact.
+
+### When rollback stops being possible
+
+Up to the moment DNS moves, rollback is free: the old server still has
+everything, and you simply do not switch.
+
+**After DNS moves, it is not.** The instant the new server accepts one enquiry,
+one message, one quote approval, going back to the old server loses it —
+permanently, with no error and no record, because the old database never knew
+it happened.
+
+This is the opposite of how it feels at the time. The first hour on a new
+server feels provisional, like you could still change your mind. You cannot,
+not without deciding to discard whatever came in. So:
+
+- If something is wrong in the **first few minutes and nothing has been
+  submitted** — point DNS back, start `web` on the old server, done.
+- If anything **has** been submitted, going back means dumping the new server
+  and restoring onto the old one, which is this same appendix in reverse. Fixing
+  forward on the new box is nearly always the better answer.
+
+Check before deciding:
+
+```bash
+# on the NEW server — anything created since the cutover
+docker compose exec -T db psql -U akara -d akara -c \
+  "select count(*) from requests where created_at > now() - interval '2 hours';"
+```
+
+Zero means the door is still open. Anything else means it closed.
+
+### Decommissioning the old box
+
+After a week of the new server behaving, and one restore test on the new
+server's own backups:
+
+```bash
+# on the OLD server — take a final copy off the machine first
+docker compose down            # keeps volumes
+```
+
+Do not `down -v`, and do not destroy the instance until that final copy is
+somewhere else and you have opened it. A backup nobody has read is a hope.

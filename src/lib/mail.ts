@@ -152,6 +152,18 @@ export function shell(opts: {
 </body></html>`;
 }
 
+/** The code itself, set big and monospaced so it survives being read off a
+ *  phone. Deliberately not a button: this email frequently lands in a client
+ *  that strips links, and the whole point is that the code works on its own. */
+export function codeBlock(code: string) {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 6px;">
+<tr><td style="background:#0C0B09;border:1px solid rgba(242,163,60,.35);border-radius:10px;padding:16px 26px;">
+  <div style="font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:32px;letter-spacing:.32em;color:#F2A33C;font-weight:600;line-height:1;">${esc(
+    code,
+  )}</div>
+</td></tr></table>`;
+}
+
 export function kvBlock(rows: [string, string][]) {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:16px 0 4px;">
 ${rows

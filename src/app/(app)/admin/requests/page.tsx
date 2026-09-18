@@ -94,6 +94,28 @@ export default async function AdminQueuePage({
                       <span style={{ display: "block", fontSize: 12, color: "var(--ink-faint)" }}>
                         {r.contactCompany || r.contactEmail}
                       </span>
+                      {/* An enquiry whose address was never confirmed is still
+                          worth reading, but it should never be quoted into
+                          silently — the reply may go to someone who never
+                          asked for it. Flagged in the list, not filtered out. */}
+                      {r.emailVerifiedAt ? null : (
+                        <span
+                          title="The submitter never entered the emailed code, so this address is unconfirmed."
+                          style={{
+                            display: "inline-block",
+                            marginTop: 3,
+                            fontSize: 10.5,
+                            letterSpacing: ".08em",
+                            textTransform: "uppercase",
+                            color: "var(--terra-deep)",
+                            border: "1px solid color-mix(in srgb, var(--terra) 45%, transparent)",
+                            borderRadius: 4,
+                            padding: "1px 5px",
+                          }}
+                        >
+                          email unconfirmed
+                        </span>
+                      )}
                     </td>
                     <td style={{ maxWidth: 280 }}>
                       <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
